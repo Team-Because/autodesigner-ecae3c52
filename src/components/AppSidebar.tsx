@@ -32,7 +32,7 @@ import { listAccounts, markActive, removeAccount, activateVaultedAccount, type V
 import { ActiveAccountBadge } from "@/components/ActiveAccountBadge";
 
 const userItems = [
-  { title: "The Magic", url: "/", icon: Sparkles },
+  { title: "The Magic", url: "/studio", icon: Sparkles },
   { title: "Brands", url: "/brands", icon: Palette },
   { title: "Setup Guide", url: "/brand-guide", icon: BookOpen },
   { title: "History", url: "/history", icon: Clock },
