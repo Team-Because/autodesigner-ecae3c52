@@ -146,6 +146,15 @@ export default function AdminHistory() {
     return "aspect-[4/3]";
   };
 
+  const getThumbUrl = (url: string, width = 480) => {
+    if (!url) return url;
+    if (url.includes("/storage/v1/object/")) {
+      return url.replace("/storage/v1/object/", "/storage/v1/render/image/") +
+        (url.includes("?") ? "&" : "?") + `width=${width}&quality=55&resize=contain`;
+    }
+    return url;
+  };
+
   if (adminLoading) {
     return <div className="flex items-center justify-center min-h-[400px]"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
   }
