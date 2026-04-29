@@ -146,6 +146,15 @@ export default function AdminHistory() {
     return "aspect-[4/3]";
   };
 
+  const getThumbUrl = (url: string, width = 480) => {
+    if (!url) return url;
+    if (url.includes("/storage/v1/object/")) {
+      return url.replace("/storage/v1/object/", "/storage/v1/render/image/") +
+        (url.includes("?") ? "&" : "?") + `width=${width}&quality=55&resize=contain`;
+    }
+    return url;
+  };
+
   if (adminLoading) {
     return <div className="flex items-center justify-center min-h-[400px]"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
   }
@@ -253,7 +262,7 @@ export default function AdminHistory() {
                 <div className={`relative ${getAspectClass(g)} bg-muted overflow-hidden`}>
                   {g.output_image_url ? (
                     <>
-                      <img src={g.output_image_url} alt="Generated creative" className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300" loading="lazy" />
+                      <img src={getThumbUrl(g.output_image_url, 480)} alt="Generated creative" className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300" loading="lazy" decoding="async" />
                       <div className="absolute inset-0 bg-foreground/0 group-hover:bg-foreground/10 transition-colors flex items-center justify-center">
                         <Eye className="h-8 w-8 text-card opacity-0 group-hover:opacity-100 transition-opacity drop-shadow-lg" />
                       </div>
@@ -265,7 +274,7 @@ export default function AdminHistory() {
                   )}
                   {g.reference_image_url && g.reference_image_url !== "" && (
                     <div className="absolute bottom-2 left-2 h-12 w-12 rounded-lg border-2 border-card shadow-md overflow-hidden bg-muted">
-                      <img src={g.reference_image_url} alt="Reference" className="h-full w-full object-cover" loading="lazy" />
+                      <img src={getThumbUrl(g.reference_image_url, 96)} alt="Reference" className="h-full w-full object-cover" loading="lazy" decoding="async" />
                     </div>
                   )}
                 </div>

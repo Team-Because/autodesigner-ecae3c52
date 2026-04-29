@@ -113,6 +113,18 @@ export default function History() {
     return typeof g.copywriting === "string" ? JSON.parse(g.copywriting) : g.copywriting;
   };
 
+  // Build a fast, low-res thumbnail URL via Supabase Storage's image
+  // transformation endpoint. Falls back to the original URL if not a
+  // Supabase storage object URL.
+  const getThumbUrl = (url: string, width = 480) => {
+    if (!url) return url;
+    if (url.includes("/storage/v1/object/")) {
+      return url.replace("/storage/v1/object/", "/storage/v1/render/image/") +
+        (url.includes("?") ? "&" : "?") + `width=${width}&quality=55&resize=contain`;
+    }
+    return url;
+  };
+
   const getAspectClass = (g: any) => {
     const ar = g.requested_aspect_ratio;
     if (ar === "1:1") return "aspect-square";
@@ -218,10 +230,11 @@ export default function History() {
                   {g.output_image_url ? (
                     <>
                       <img
-                        src={g.output_image_url}
+                        src={getThumbUrl(g.output_image_url, 480)}
                         alt="Generated creative"
                         className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
                         loading="lazy"
+                        decoding="async"
                       />
                       <div className="absolute inset-0 bg-foreground/0 group-hover:bg-foreground/10 transition-colors flex items-center justify-center">
                         <Eye className="h-8 w-8 text-card opacity-0 group-hover:opacity-100 transition-opacity drop-shadow-lg" />
@@ -237,10 +250,11 @@ export default function History() {
                   {g.reference_image_url && g.reference_image_url !== "" && (
                     <div className="absolute bottom-2 left-2 h-12 w-12 rounded-lg border-2 border-card shadow-md overflow-hidden bg-muted">
                       <img
-                        src={g.reference_image_url}
+                        src={getThumbUrl(g.reference_image_url, 96)}
                         alt="Reference"
                         className="h-full w-full object-cover"
                         loading="lazy"
+                        decoding="async"
                       />
                     </div>
                   )}
