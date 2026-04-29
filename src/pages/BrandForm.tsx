@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Save, Loader2, X, ImagePlus, Plus } from "lucide-react";
+import { ArrowLeft, Save, Loader2, X, ImagePlus, Plus, ClipboardCopy } from "lucide-react";
 import { toast } from "sonner";
 import {
   Select,
