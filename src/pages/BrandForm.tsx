@@ -510,6 +510,56 @@ export default function BrandForm() {
         <h1 className="text-2xl font-display font-bold">
           {isEditing ? "Edit Brand" : "Create New Brand"}
         </h1>
+        {isEditing && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="gap-2"
+            onClick={async () => {
+              const palette: string[] = [];
+              palette.push(`- Primary: ${primaryColor}`);
+              palette.push(`- Secondary: ${secondaryColor}`);
+              if (extraColors.length) {
+                palette.push(`Extras:`);
+                for (const c of extraColors) palette.push(`- ${c.name || "Accent"}: ${c.hex}`);
+              }
+              const assetTagLines = assets.map((a, i) => {
+                const label = a.label?.startsWith("Other:")
+                  ? a.label.slice(6).trim() || "Other"
+                  : (a.label || "Untagged");
+                return `- Asset ${i + 1} (${label}): ${label}`;
+              });
+              const split = readNevers(writeNevers(visualNevers, contentNevers, legacyNevers));
+              const sections: string[] = [];
+              sections.push(`## INDUSTRY\n${industry || ""}`);
+              sections.push(`## BRAND NAME\n${name}`);
+              sections.push(`## COLOR PALETTE\n${palette.join("\n")}`);
+              if (assetTagLines.length) sections.push(`## ASSET TAGS\n${assetTagLines.join("\n")}`);
+              if (briefIdentity.trim()) sections.push(`## BRAND IDENTITY\n${briefIdentity.trim()}`);
+              if (briefMandatory.trim()) sections.push(`## MUST-INCLUDE ELEMENTS\n${briefMandatory.trim()}`);
+              if (briefVisual.trim()) sections.push(`## VISUAL DIRECTION\n${briefVisual.trim()}`);
+              if (briefCopy.trim()) sections.push(`## EXAMPLE COPY\n${briefCopy.trim()}`);
+              // voiceRules already contains "## TONE & VOICE" / "## TARGET AUDIENCE" headers
+              if (voiceRules.trim()) sections.push(voiceRules.trim());
+              else {
+                sections.push(`## TONE & VOICE\n`);
+                sections.push(`## TARGET AUDIENCE\n`);
+              }
+              sections.push(`## VISUAL NEVERS\n${split.visual || ""}`);
+              sections.push(`## CONTENT NEVERS\n${split.content || split.general || ""}`);
+              const blob = sections.join("\n\n");
+              try {
+                await navigator.clipboard.writeText(blob);
+                toast.success("Brand setup copied — paste into Claude/ChatGPT to edit");
+              } catch {
+                toast.error("Copy failed — clipboard blocked");
+              }
+            }}
+          >
+            <ClipboardCopy className="h-4 w-4" /> Copy for Claude
+          </Button>
+        )}
       </div>
 
       {/* Mood Pool Preview and Best Practices Guide removed — Paste & Parse is the single canonical source. */}
