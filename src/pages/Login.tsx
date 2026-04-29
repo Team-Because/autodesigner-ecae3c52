@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { upsertAccount } from "@/lib/accountVault";
+import { SEO } from "@/components/SEO";
 
 export default function Login() {
   const { session, loading: authLoading } = useAuth();
@@ -29,7 +30,7 @@ export default function Login() {
 
   // If already signed in and we're NOT trying to add another account, bounce home
   if (!authLoading && session && !isAddingAccount) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/studio" replace />;
   }
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -73,7 +74,7 @@ export default function Login() {
         username: profile?.username || usernameGuess,
         displayName: profile?.display_name || undefined,
       });
-      navigate("/", { replace: true });
+      navigate("/studio", { replace: true });
     }
   };
 
