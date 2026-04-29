@@ -113,6 +113,18 @@ export default function History() {
     return typeof g.copywriting === "string" ? JSON.parse(g.copywriting) : g.copywriting;
   };
 
+  // Build a fast, low-res thumbnail URL via Supabase Storage's image
+  // transformation endpoint. Falls back to the original URL if not a
+  // Supabase storage object URL.
+  const getThumbUrl = (url: string, width = 480) => {
+    if (!url) return url;
+    if (url.includes("/storage/v1/object/")) {
+      return url.replace("/storage/v1/object/", "/storage/v1/render/image/") +
+        (url.includes("?") ? "&" : "?") + `width=${width}&quality=55&resize=contain`;
+    }
+    return url;
+  };
+
   const getAspectClass = (g: any) => {
     const ar = g.requested_aspect_ratio;
     if (ar === "1:1") return "aspect-square";
