@@ -1,14 +1,35 @@
-User-agent: Googlebot
-Allow: /
-
-User-agent: Bingbot
-Allow: /
-
-User-agent: Twitterbot
-Allow: /
-
-User-agent: facebookexternalhit
-Allow: /
-
+# MakeMyAd · by Because — robots.txt
+# Allow all standard crawlers
 User-agent: *
 Allow: /
+Disallow: /studio
+Disallow: /history
+Disallow: /brands
+Disallow: /brand-guide
+Disallow: /dashboard
+Disallow: /admin
+Disallow: /admin/
+
+# Explicitly allow major AI crawlers (GEO / AI visibility)
+User-agent: GPTBot
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Claude-Web
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: CCBot
+Allow: /
+
+User-agent: anthropic-ai
+Allow: /
+
+Sitemap: https://bdesign.teambecause.com/sitemap.xml
