@@ -32,7 +32,7 @@ import { listAccounts, markActive, removeAccount, activateVaultedAccount, type V
 import { ActiveAccountBadge } from "@/components/ActiveAccountBadge";
 
 const userItems = [
-  { title: "The Magic", url: "/", icon: Sparkles },
+  { title: "The Magic", url: "/studio", icon: Sparkles },
   { title: "Brands", url: "/brands", icon: Palette },
   { title: "Setup Guide", url: "/brand-guide", icon: BookOpen },
   { title: "History", url: "/history", icon: Clock },
@@ -92,7 +92,7 @@ export function AppSidebar() {
     queryClient.clear();
     setVaulted(listAccounts());
     toast.success(`Switched to ${account.username}`);
-    navigate("/");
+    navigate("/studio");
   };
 
   const handleSignOut = async () => {
@@ -102,7 +102,7 @@ export function AppSidebar() {
     const switchedTo = result && "switchedTo" in result ? result.switchedTo : undefined;
     if (switchedTo) {
       toast.success(`Signed out. Now using ${switchedTo}`);
-      navigate("/");
+      navigate("/studio");
     } else {
       navigate("/login");
     }

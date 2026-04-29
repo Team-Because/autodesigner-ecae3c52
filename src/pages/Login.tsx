@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { upsertAccount } from "@/lib/accountVault";
+import { SEO } from "@/components/SEO";
 
 export default function Login() {
   const { session, loading: authLoading } = useAuth();
@@ -29,7 +30,7 @@ export default function Login() {
 
   // If already signed in and we're NOT trying to add another account, bounce home
   if (!authLoading && session && !isAddingAccount) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/studio" replace />;
   }
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -73,7 +74,7 @@ export default function Login() {
         username: profile?.username || usernameGuess,
         displayName: profile?.display_name || undefined,
       });
-      navigate("/", { replace: true });
+      navigate("/studio", { replace: true });
     }
   };
 
@@ -81,6 +82,12 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden"
       style={{ background: "linear-gradient(135deg, hsl(220 80% 97%), hsl(45 96% 97%), hsl(220 72% 95%))" }}
     >
+      <SEO
+        title="Sign in — MakeMyAd by Because"
+        description="Sign in to your MakeMyAd workspace to generate on‑brand AI ad creatives. Accounts are admin-issued by Because."
+        path="/login"
+        index={false}
+      />
       <div className="absolute top-[-20%] right-[-10%] w-[600px] h-[600px] rounded-full opacity-30"
         style={{ background: "radial-gradient(circle, hsl(45 96% 80%), transparent 70%)" }} />
       <div className="absolute bottom-[-20%] left-[-10%] w-[500px] h-[500px] rounded-full opacity-20"
