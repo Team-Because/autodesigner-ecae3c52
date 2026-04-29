@@ -334,14 +334,28 @@ export default function BrandForm() {
     const files = e.target.files;
     if (!files || !user) return;
 
+    const ALLOWED = ["png", "jpg", "jpeg", "webp", "gif"];
     setUploading(true);
     for (const file of Array.from(files)) {
-      const ext = file.name.split(".").pop();
+      const rawExt = (file.name.split(".").pop() || "").toLowerCase();
+      const ext = ALLOWED.includes(rawExt) ? rawExt : "";
+      const mimeOk = /^image\/(png|jpe?g|webp|gif)$/i.test(file.type);
+
+      if (!ext || !mimeOk) {
+        toast.error(`Unsupported format: ${file.name}. Use PNG, JPEG, WebP, or GIF.`);
+        continue;
+      }
+
+      // Use a clean, deterministic path — never embed the original filename
+      // (spaces, parentheses, and unicode break Storage keys / public URLs).
       const path = `${user.id}/${crypto.randomUUID()}.${ext}`;
 
-      const { error } = await supabase.storage.from("brand-assets").upload(path, file);
+      const { error } = await supabase.storage
+        .from("brand-assets")
+        .upload(path, file, { contentType: file.type, cacheControl: "3600", upsert: false });
       if (error) {
-        toast.error(`Failed to upload ${file.name}`);
+        console.error("[asset upload] storage error", error);
+        toast.error(`Failed to upload ${file.name}: ${error.message}`);
         continue;
       }
 
@@ -354,7 +368,12 @@ export default function BrandForm() {
           .insert({ brand_id: id, user_id: assetOwnerId, image_url: urlData.publicUrl, label: "" })
           .select()
           .single();
-        if (!insertErr && inserted) {
+        if (insertErr) {
+          console.error("[asset upload] db insert error", insertErr);
+          toast.error(`Saved file but couldn't link it: ${insertErr.message}`);
+          continue;
+        }
+        if (inserted) {
           setAssets((prev) => [...prev, { id: inserted.id, image_url: urlData.publicUrl, label: "" }]);
         }
       } else {
