@@ -230,10 +230,11 @@ export default function History() {
                   {g.output_image_url ? (
                     <>
                       <img
-                        src={g.output_image_url}
+                        src={getThumbUrl(g.output_image_url, 480)}
                         alt="Generated creative"
                         className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
                         loading="lazy"
+                        decoding="async"
                       />
                       <div className="absolute inset-0 bg-foreground/0 group-hover:bg-foreground/10 transition-colors flex items-center justify-center">
                         <Eye className="h-8 w-8 text-card opacity-0 group-hover:opacity-100 transition-opacity drop-shadow-lg" />
@@ -249,10 +250,11 @@ export default function History() {
                   {g.reference_image_url && g.reference_image_url !== "" && (
                     <div className="absolute bottom-2 left-2 h-12 w-12 rounded-lg border-2 border-card shadow-md overflow-hidden bg-muted">
                       <img
-                        src={g.reference_image_url}
+                        src={getThumbUrl(g.reference_image_url, 96)}
                         alt="Reference"
                         className="h-full w-full object-cover"
                         loading="lazy"
+                        decoding="async"
                       />
                     </div>
                   )}
