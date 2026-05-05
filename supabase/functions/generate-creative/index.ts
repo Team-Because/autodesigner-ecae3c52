@@ -258,17 +258,24 @@ async function kieGenerateImage(
 ): Promise<string> {
   // Build per-model body shape
   const isEdit = model === "nano-banana-edit" || model === "google/nano-banana-edit";
+  const isGptImage2 = model === "gpt-image-2-image-to-image";
   const apiModel = isEdit ? "google/nano-banana-edit" : model;
-  const input: Record<string, unknown> = { prompt, output_format: "png" };
+  const input: Record<string, unknown> = { prompt };
 
   if (isEdit) {
     // Edit endpoint uses different field names
     input.image_urls = imageInputs;
     input.image_size = aspectRatio; // enum: 1:1, 9:16, 16:9, 3:4, 4:3, etc.
+  } else if (isGptImage2) {
+    // GPT Image 2 image-to-image uses input_urls + aspect_ratio + resolution
+    input.input_urls = imageInputs;
+    input.aspect_ratio = aspectRatio;
+    input.resolution = resolution;
   } else {
     input.image_input = imageInputs;
     input.aspect_ratio = aspectRatio;
     input.resolution = resolution;
+    (input as any).output_format = "png";
   }
 
   // Submit task
