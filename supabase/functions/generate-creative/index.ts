@@ -258,17 +258,24 @@ async function kieGenerateImage(
 ): Promise<string> {
   // Build per-model body shape
   const isEdit = model === "nano-banana-edit" || model === "google/nano-banana-edit";
+  const isGptImage2 = model === "gpt-image-2-image-to-image";
   const apiModel = isEdit ? "google/nano-banana-edit" : model;
-  const input: Record<string, unknown> = { prompt, output_format: "png" };
+  const input: Record<string, unknown> = { prompt };
 
   if (isEdit) {
     // Edit endpoint uses different field names
     input.image_urls = imageInputs;
     input.image_size = aspectRatio; // enum: 1:1, 9:16, 16:9, 3:4, 4:3, etc.
+  } else if (isGptImage2) {
+    // GPT Image 2 image-to-image uses input_urls + aspect_ratio + resolution
+    input.input_urls = imageInputs;
+    input.aspect_ratio = aspectRatio;
+    input.resolution = resolution;
   } else {
     input.image_input = imageInputs;
     input.aspect_ratio = aspectRatio;
     input.resolution = resolution;
+    (input as any).output_format = "png";
   }
 
   // Submit task
@@ -1466,7 +1473,10 @@ async function generateCreative(
   //   - nano-banana-2          → up to 14 image_input, most reliable
   //   - google/nano-banana-edit → up to 10 image_urls (different schema, handled in kieGenerateImage)
   //   - nano-banana-pro        → up to 8 image_input, highest quality but E006-prone with many inputs
+  // GPT Image 2 supports 2K for non-1:1 ratios; 1:1 is capped at 1K per kie.ai docs.
+  const gptResolution = spec.aspectRatio === "1:1" ? "1K" : "2K";
   const modelPlan = [
+    { model: "gpt-image-2-image-to-image", label: "GPT Image 2", resolution: gptResolution, maxInputs: 10 },
     { model: "nano-banana-2", label: "Nano Banana 2", resolution: "1K", maxInputs: 14 },
     { model: "google/nano-banana-edit", label: "Nano Banana Edit", resolution: "1K", maxInputs: 10 },
     { model: "nano-banana-pro", label: "Nano Banana Pro", resolution: "1K", maxInputs: 8 },
