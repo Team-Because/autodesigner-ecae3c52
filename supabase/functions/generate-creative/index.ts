@@ -1473,7 +1473,10 @@ async function generateCreative(
   //   - nano-banana-2          → up to 14 image_input, most reliable
   //   - google/nano-banana-edit → up to 10 image_urls (different schema, handled in kieGenerateImage)
   //   - nano-banana-pro        → up to 8 image_input, highest quality but E006-prone with many inputs
+  // GPT Image 2 supports 2K for non-1:1 ratios; 1:1 is capped at 1K per kie.ai docs.
+  const gptResolution = spec.aspectRatio === "1:1" ? "1K" : "2K";
   const modelPlan = [
+    { model: "gpt-image-2-image-to-image", label: "GPT Image 2", resolution: gptResolution, maxInputs: 10 },
     { model: "nano-banana-2", label: "Nano Banana 2", resolution: "1K", maxInputs: 14 },
     { model: "google/nano-banana-edit", label: "Nano Banana Edit", resolution: "1K", maxInputs: 10 },
     { model: "nano-banana-pro", label: "Nano Banana Pro", resolution: "1K", maxInputs: 8 },
