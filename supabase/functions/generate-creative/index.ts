@@ -306,8 +306,9 @@ async function kieGenerateImage(
 
   console.log(`kie.ai task created: ${taskId} (model: ${model})`);
 
-  // Poll for completion — max 3 minutes with exponential backoff
-  const maxWaitMs = 180000;
+  // Poll for completion. GPT Image 2 (esp. 2K) can take 4–6 min; other models
+  // usually <2 min. Generous ceiling avoids premature fallback to a weaker model.
+  const maxWaitMs = isGptImage2 ? 480000 : 240000;
   const startTime = Date.now();
   let pollInterval = 3000; // Start at 3s
   const maxPollInterval = 10000;
