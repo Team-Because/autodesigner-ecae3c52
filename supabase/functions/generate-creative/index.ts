@@ -1411,7 +1411,8 @@ async function generateCreative(
   referenceImageUrl: string,
   spec: { width: number; height: number; label: string; aspectRatio: string },
   apiKey: string,
-  directive: CreativeDirective | null
+  directive: CreativeDirective | null,
+  onTaskCreated?: (taskId: string) => Promise<void> | void,
 ): Promise<{ imageBase64: string; captionText: string }> {
   let systemPrompt: string;
   let selectedAssets: any[];
