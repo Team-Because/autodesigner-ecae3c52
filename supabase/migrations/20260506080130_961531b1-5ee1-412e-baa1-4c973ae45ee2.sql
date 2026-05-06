@@ -1,0 +1,2 @@
+UPDATE public.generations SET kie_task_id = '3c527d4e2a1192b6e052021c6bf6c547' WHERE id = '9facacbd-4aba-42b4-b241-c32c9bf956ac' AND kie_task_id IS NULL;
+UPDATE public.generations SET kie_task_id = 'a6fc6e466ca3f295e214ad42e9003245' WHERE id = '4d9bdb37-f557-4447-b963-5a7ab57329dc' AND kie_task_id IS NULL;

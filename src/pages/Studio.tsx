@@ -277,6 +277,7 @@ export default function Studio() {
 
         try {
           let consecutiveQueryErrors = 0;
+          let lastRecoverAt = 0;
           while (Date.now() < deadline) {
             if (realtimeResult) return realtimeResult;
 
@@ -296,6 +297,25 @@ export default function Studio() {
               }
               if (row.status === "failed") return "failed";
             }
+
+            // After 30s, every ~15s, ask the server to actively check Kie.
+            // This rescues generations whose edge worker died mid-poll.
+            const elapsed = Date.now() - start;
+            if (elapsed > 30000 && Date.now() - lastRecoverAt > 15000) {
+              lastRecoverAt = Date.now();
+              try {
+                const { data: rec } = await supabase.functions.invoke("recover-generation", {
+                  body: { generationId: gen.id },
+                });
+                if (rec?.status === "completed" && rec.imageUrl) {
+                  return { imageUrl: rec.imageUrl, caption: rec?.copywriting?.caption ?? "" };
+                }
+                if (rec?.status === "failed") return "failed";
+              } catch {
+                // Ignore — keep polling.
+              }
+            }
+
             if (onTick) onTick(Date.now() - start);
             await new Promise((r) => setTimeout(r, intervalMs));
           }

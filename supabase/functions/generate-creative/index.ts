@@ -254,7 +254,8 @@ async function kieGenerateImage(
   imageInputs: string[],
   aspectRatio: string,
   model = "nano-banana-2",
-  resolution = "1K"
+  resolution = "1K",
+  onTaskCreated?: (taskId: string) => Promise<void> | void,
 ): Promise<string> {
   // Build per-model body shape
   const isEdit = model === "nano-banana-edit" || model === "google/nano-banana-edit";
@@ -305,6 +306,12 @@ async function kieGenerateImage(
   }
 
   console.log(`kie.ai task created: ${taskId} (model: ${model})`);
+
+  // Persist taskId so a recovery endpoint can finalize this generation later
+  // if the edge worker dies during the long Kie poll (4–6 min for GPT Image 2).
+  if (onTaskCreated) {
+    try { await onTaskCreated(taskId); } catch (e) { console.warn("onTaskCreated failed:", e); }
+  }
 
   // Poll for completion. GPT Image 2 (esp. 2K) can take 4–6 min; other models
   // usually <2 min. Generous ceiling avoids premature fallback to a weaker model.
@@ -1404,7 +1411,8 @@ async function generateCreative(
   referenceImageUrl: string,
   spec: { width: number; height: number; label: string; aspectRatio: string },
   apiKey: string,
-  directive: CreativeDirective | null
+  directive: CreativeDirective | null,
+  onTaskCreated?: (taskId: string) => Promise<void> | void,
 ): Promise<{ imageBase64: string; captionText: string }> {
   let systemPrompt: string;
   let selectedAssets: any[];
@@ -1503,7 +1511,8 @@ async function generateCreative(
           imageInputUrls,
           spec.aspectRatio,
           model,
-          resolution
+          resolution,
+          onTaskCreated,
         );
 
         // Download the generated image
@@ -1656,9 +1665,16 @@ async function runGenerationPipeline(params: {
 
     let imageBase64: string;
     let captionText: string;
+
+    // Persist Kie task id on the generations row so a recovery endpoint can
+    // finalize this row if the edge worker is killed during the long poll.
+    const persistTaskId = async (taskId: string) => {
+      await supabase.from("generations").update({ kie_task_id: taskId }).eq("id", generationId);
+    };
+
     try {
       const result = await generateCreative(
-        framework, brand, brandAssets, referenceImageUrl, spec, apiKey, directive
+        framework, brand, brandAssets, referenceImageUrl, spec, apiKey, directive, persistTaskId,
       );
       imageBase64 = result.imageBase64;
       captionText = result.captionText;
@@ -1677,7 +1693,7 @@ async function runGenerationPipeline(params: {
       await supabase.from("generations").update({ status: "retrying_aspect_ratio" }).eq("id", generationId);
       try {
         const retryResult = await generateCreative(
-          framework, brand, brandAssets, referenceImageUrl, spec, apiKey, directive
+          framework, brand, brandAssets, referenceImageUrl, spec, apiKey, directive, persistTaskId,
         );
         const retryBase64 = retryResult.imageBase64.replace(/^data:image\/\w+;base64,/, "");
         const retryBytes = Uint8Array.from(atob(retryBase64), (c) => c.charCodeAt(0));

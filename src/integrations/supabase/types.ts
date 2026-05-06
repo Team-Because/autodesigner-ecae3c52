@@ -204,6 +204,7 @@ export type Database = {
           copywriting: Json | null
           created_at: string
           id: string
+          kie_task_id: string | null
           layout_guide: string | null
           output_format: string | null
           output_image_url: string | null
@@ -226,6 +227,7 @@ export type Database = {
           copywriting?: Json | null
           created_at?: string
           id?: string
+          kie_task_id?: string | null
           layout_guide?: string | null
           output_format?: string | null
           output_image_url?: string | null
@@ -248,6 +250,7 @@ export type Database = {
           copywriting?: Json | null
           created_at?: string
           id?: string
+          kie_task_id?: string | null
           layout_guide?: string | null
           output_format?: string | null
           output_image_url?: string | null
