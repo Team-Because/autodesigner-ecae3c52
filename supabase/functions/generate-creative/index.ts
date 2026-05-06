@@ -307,6 +307,12 @@ async function kieGenerateImage(
 
   console.log(`kie.ai task created: ${taskId} (model: ${model})`);
 
+  // Persist taskId so a recovery endpoint can finalize this generation later
+  // if the edge worker dies during the long Kie poll (4–6 min for GPT Image 2).
+  if (onTaskCreated) {
+    try { await onTaskCreated(taskId); } catch (e) { console.warn("onTaskCreated failed:", e); }
+  }
+
   // Poll for completion. GPT Image 2 (esp. 2K) can take 4–6 min; other models
   // usually <2 min. Generous ceiling avoids premature fallback to a weaker model.
   const maxWaitMs = isGptImage2 ? 480000 : 240000;
