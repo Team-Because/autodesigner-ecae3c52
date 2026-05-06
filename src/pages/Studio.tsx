@@ -336,9 +336,9 @@ export default function Studio() {
         // timeout. Poll the generations row until it's completed/failed —
         // never treat a 202 with no imageUrl as a failure.
         if (!fnError && fnData && fnData.status === "accepted" && !fnData.imageUrl) {
-          setProgressPhase("Generating your creative — this can take 1–3 minutes...");
+          setProgressPhase("Generating your creative — this can take 2–6 minutes...");
           const recovered = await waitForServerSideResult(
-            300000, // 5 minutes — generation can occasionally exceed 3 min
+            480000, // 8 minutes — GPT Image 2 at 2K can take 4–6 min
             3000,
             (elapsedMs) => {
               const sec = Math.floor(elapsedMs / 1000);
