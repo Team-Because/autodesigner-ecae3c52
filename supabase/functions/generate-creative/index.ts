@@ -1511,7 +1511,8 @@ async function generateCreative(
           imageInputUrls,
           spec.aspectRatio,
           model,
-          resolution
+          resolution,
+          onTaskCreated,
         );
 
         // Download the generated image
