@@ -254,7 +254,8 @@ async function kieGenerateImage(
   imageInputs: string[],
   aspectRatio: string,
   model = "nano-banana-2",
-  resolution = "1K"
+  resolution = "1K",
+  onTaskCreated?: (taskId: string) => Promise<void> | void,
 ): Promise<string> {
   // Build per-model body shape
   const isEdit = model === "nano-banana-edit" || model === "google/nano-banana-edit";
