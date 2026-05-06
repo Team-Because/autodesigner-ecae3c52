@@ -253,32 +253,56 @@ export default function Studio() {
       ): Promise<{ imageUrl: string; caption: string } | "failed" | null> => {
         const start = Date.now();
         const deadline = start + timeoutMs;
-        let consecutiveQueryErrors = 0;
-        while (Date.now() < deadline) {
-          const { data: row, error: queryError } = await supabase
-            .from("generations")
-            .select("status, output_image_url, copywriting")
-            .eq("id", gen.id)
-            .maybeSingle();
-          if (queryError) {
-            // Transient network error querying the row — keep polling instead
-            // of giving up. The background job may still complete.
-            consecutiveQueryErrors++;
-            if (consecutiveQueryErrors > 10) return null;
-          } else if (row) {
-            consecutiveQueryErrors = 0;
-            if (row.status === "completed" && row.output_image_url) {
-              const cw: any = row.copywriting;
-              return { imageUrl: row.output_image_url, caption: cw?.caption ?? "" };
+
+        // Realtime fast-path: subscribe to the row so completion is seen
+        // instantly, no matter how long polling intervals are.
+        let realtimeResult: { imageUrl: string; caption: string } | "failed" | null = null;
+        const channel = supabase
+          .channel(`gen-${gen.id}`)
+          .on(
+            "postgres_changes",
+            { event: "UPDATE", schema: "public", table: "generations", filter: `id=eq.${gen.id}` },
+            (payload: any) => {
+              const row = payload?.new;
+              if (!row) return;
+              if (row.status === "completed" && row.output_image_url) {
+                const cw: any = row.copywriting;
+                realtimeResult = { imageUrl: row.output_image_url, caption: cw?.caption ?? "" };
+              } else if (row.status === "failed") {
+                realtimeResult = "failed";
+              }
+            },
+          )
+          .subscribe();
+
+        try {
+          let consecutiveQueryErrors = 0;
+          while (Date.now() < deadline) {
+            if (realtimeResult) return realtimeResult;
+
+            const { data: row, error: queryError } = await supabase
+              .from("generations")
+              .select("status, output_image_url, copywriting")
+              .eq("id", gen.id)
+              .maybeSingle();
+            if (queryError) {
+              consecutiveQueryErrors++;
+              if (consecutiveQueryErrors > 10) return null;
+            } else if (row) {
+              consecutiveQueryErrors = 0;
+              if (row.status === "completed" && row.output_image_url) {
+                const cw: any = row.copywriting;
+                return { imageUrl: row.output_image_url, caption: cw?.caption ?? "" };
+              }
+              if (row.status === "failed") return "failed";
             }
-            if (row.status === "failed") return "failed";
-            // status === "processing" → keep polling, do NOT bail just because
-            // imageUrl is empty.
+            if (onTick) onTick(Date.now() - start);
+            await new Promise((r) => setTimeout(r, intervalMs));
           }
-          if (onTick) onTick(Date.now() - start);
-          await new Promise((r) => setTimeout(r, intervalMs));
+          return null;
+        } finally {
+          supabase.removeChannel(channel);
         }
-        return null;
       };
 
       let fnData: any = null;
