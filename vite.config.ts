@@ -9,7 +9,7 @@ export default defineConfig(({ mode }) => {
   const supabaseUrl = env.VITE_SUPABASE_URL || "https://jibbeetyogbfkjvazysy.supabase.co";
   const supabasePublishableKey =
     env.VITE_SUPABASE_PUBLISHABLE_KEY ||
-    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJIaWJiZWV0eW9nYmZranZhenlzeSIsInJvbGUiOiJhbm9uIiwiaWF0IjoxNzczMjM1MDc2LCJleHAiOjIwODg4MTExMDc2fQ.C20BJLWyo9A3c2ouT097uddJrrJJwM-K09RhEQ3bf0E";
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJqaWJiZWV0eW9nYmZranZhenlzeSIsInJlZiI6ImppYmJlZXR5b2diZmtqdmF6eXN5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyMzUwNzYsImV4cCI6MjA4ODgxMTA3Nn0.C20BJLWyo9A3c2ouT097uddJrrJJwM-K09RhEQ3bf0E";
 
   return {
     server: {
