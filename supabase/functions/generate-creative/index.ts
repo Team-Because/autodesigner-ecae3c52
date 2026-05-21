@@ -243,6 +243,39 @@ async function kieChat(
   return data;
 }
 
+// ─── Lovable AI Gateway fallback (same OpenAI-compatible schema) ───
+// Used ONLY when kie.ai chat endpoint fails / times out. Keeps kie primary
+// for cost; Lovable AI is the resilience net so the reasoning stages never
+// silently degrade to a generic hardcoded template.
+const LOVABLE_CHAT_BASE = "https://ai.gateway.lovable.dev/v1/chat/completions";
+async function lovableChat(
+  body: Record<string, unknown>,
+  timeoutMs = 90000,
+  model = "google/gemini-2.5-pro"
+): Promise<any> {
+  const lovableKey = Deno.env.get("LOVABLE_API_KEY");
+  if (!lovableKey) throw new Error("LOVABLE_API_KEY not configured");
+  const payload = { model, ...body };
+  const response = await fetch(LOVABLE_CHAT_BASE, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${lovableKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!response.ok) {
+    const errText = await response.text().catch(() => "");
+    console.error(`Lovable AI fallback error ${response.status}:`, errText);
+    if (response.status === 402) throw new Error("CREDITS_EXHAUSTED");
+    if (response.status === 429) throw new Error("LOVABLE_RATE_LIMITED");
+    throw new Error(`Lovable AI fallback failed (${response.status})`);
+  }
+  return await response.json();
+}
+
+
 // ─── kie.ai Image Generation (async task API) ───
 // Per kie.ai docs (verified 2026-04):
 //   - nano-banana-2     → model="nano-banana-2",          input.image_input (≤14), input.aspect_ratio, input.resolution
