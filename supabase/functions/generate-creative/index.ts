@@ -243,6 +243,39 @@ async function kieChat(
   return data;
 }
 
+// ─── Lovable AI Gateway fallback (same OpenAI-compatible schema) ───
+// Used ONLY when kie.ai chat endpoint fails / times out. Keeps kie primary
+// for cost; Lovable AI is the resilience net so the reasoning stages never
+// silently degrade to a generic hardcoded template.
+const LOVABLE_CHAT_BASE = "https://ai.gateway.lovable.dev/v1/chat/completions";
+async function lovableChat(
+  body: Record<string, unknown>,
+  timeoutMs = 90000,
+  model = "google/gemini-2.5-pro"
+): Promise<any> {
+  const lovableKey = Deno.env.get("LOVABLE_API_KEY");
+  if (!lovableKey) throw new Error("LOVABLE_API_KEY not configured");
+  const payload = { model, ...body };
+  const response = await fetch(LOVABLE_CHAT_BASE, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${lovableKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!response.ok) {
+    const errText = await response.text().catch(() => "");
+    console.error(`Lovable AI fallback error ${response.status}:`, errText);
+    if (response.status === 402) throw new Error("CREDITS_EXHAUSTED");
+    if (response.status === 429) throw new Error("LOVABLE_RATE_LIMITED");
+    throw new Error(`Lovable AI fallback failed (${response.status})`);
+  }
+  return await response.json();
+}
+
+
 // ─── kie.ai Image Generation (async task API) ───
 // Per kie.ai docs (verified 2026-04):
 //   - nano-banana-2     → model="nano-banana-2",          input.image_input (≤14), input.aspect_ratio, input.resolution
@@ -930,10 +963,130 @@ Example of RIGHT composition note: "Information strip with 3-4 short data points
     }
   }
 
-  // Final fallback: use a minimal generic framework so generation can still proceed
-  console.warn("⚠️ All framework analysis attempts failed. Using minimal fallback framework.");
-  return buildMinimalFramework(aspectRatio);
+  // kie.ai chat endpoint failed all retries — try Lovable AI Gateway with the
+  // SAME prompt + tool schema before giving up. This is the resilience net so
+  // we never silently fall back to a hardcoded generic template.
+  console.warn("⚠️ All kie.ai framework attempts failed. Trying Lovable AI Gateway fallback...");
+  try {
+    let imageContent: any = { type: "image_url", image_url: { url: referenceImageUrl } };
+    if (!referenceImageUrl.startsWith("data:")) {
+      try {
+        const { base64 } = await downloadImageAsBase64(referenceImageUrl);
+        imageContent = { type: "image_url", image_url: { url: base64 } };
+      } catch (_) { /* keep URL */ }
+    }
+    const data = await lovableChat({
+      messages: [
+        {
+          role: "system",
+          content: `You are an expert visual design analyst specializing in ABSTRACT DESIGN PRINCIPLES.
+
+CRITICAL RULES:
+1. Describe layout zones by their DESIGN ROLE — NOT by their content.
+2. NEVER mention brand names, company names, product names, locations, dates, prices, phone numbers, or any specific text visible in the image.
+3. Use ONLY these zone_type categories: background, brand_mark, headline, subcopy, hero_visual, supporting_visual, info_strip, cta, footer, accent
+4. Describe SPATIAL RELATIONSHIPS, visual weight, and compositional principles — not what specific content fills each zone.
+5. For text_elements, describe the TYPOGRAPHIC STYLE (weight, case, size, contrast) — never the actual words.
+6. Think of yourself as extracting a REUSABLE TEMPLATE, not describing this specific ad.`,
+        },
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "Extract the ABSTRACT DESIGN FRAMEWORK from this advertisement. Focus on spatial layout, visual hierarchy, typographic style, and compositional principles. Do NOT describe any specific content — only design structure." },
+            imageContent,
+          ],
+        },
+      ],
+      tools: [{
+        type: "function",
+        function: {
+          name: "extract_design_framework",
+          description: "Extract a reusable, content-agnostic design framework from the reference image.",
+          parameters: {
+            type: "object",
+            properties: {
+              layout: {
+                type: "object",
+                properties: {
+                  orientation: { type: "string" },
+                  zones: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        name: { type: "string", enum: ["background","brand_mark","headline","subcopy","hero_visual","supporting_visual","info_strip","cta","footer","accent"] },
+                        position: { type: "string" },
+                        size: { type: "string" },
+                        description: { type: "string" },
+                      },
+                      required: ["name","position","size","description"],
+                      additionalProperties: false,
+                    },
+                  },
+                },
+                required: ["orientation","zones"],
+                additionalProperties: false,
+              },
+              style: {
+                type: "object",
+                properties: {
+                  background_type: { type: "string" },
+                  photography_style: { type: "string" },
+                  overlay: { type: "string" },
+                  mood: { type: "string" },
+                  color_scheme: { type: "string" },
+                },
+                required: ["background_type","photography_style","overlay","mood","color_scheme"],
+                additionalProperties: false,
+              },
+              text_elements: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    type: { type: "string", enum: ["headline","subcopy","cta","tagline","detail","footer"] },
+                    position: { type: "string" },
+                    font_style: { type: "string" },
+                    approximate_size: { type: "string" },
+                  },
+                  required: ["type","position","font_style","approximate_size"],
+                  additionalProperties: false,
+                },
+              },
+              composition_notes: { type: "string" },
+            },
+            required: ["layout","style","text_elements","composition_notes"],
+            additionalProperties: false,
+          },
+        },
+      }],
+      tool_choice: { type: "function", function: { name: "extract_design_framework" } },
+    }, 90000);
+
+    const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
+    if (toolCall?.function?.arguments) {
+      const framework = JSON.parse(toolCall.function.arguments);
+      console.log("✅ Framework extracted via Lovable AI fallback");
+      return framework;
+    }
+    const messageContent = data.choices?.[0]?.message?.content;
+    if (messageContent) {
+      const extracted = extractFrameworkFromContent(
+        typeof messageContent === "string" ? messageContent : JSON.stringify(messageContent)
+      );
+      if (extracted) {
+        console.log("✅ Framework extracted via Lovable AI fallback (content)");
+        return extracted;
+      }
+    }
+    throw new Error("Lovable AI fallback returned no framework");
+  } catch (fallbackErr: any) {
+    console.error("Lovable AI framework fallback also failed:", fallbackErr.message);
+    if (fallbackErr.message === "CREDITS_EXHAUSTED") throw fallbackErr;
+    throw new Error("FRAMEWORK_ANALYSIS_DEGRADED: Both kie.ai and Lovable AI failed. " + (lastError?.message || fallbackErr.message));
+  }
 }
+
 
 // ─────────────────────────────────────────────────────
 // Step 2 — Adapt: Map reference concept to brand
@@ -1138,99 +1291,85 @@ Look at the reference image AND each brand asset image. Visually evaluate which 
     );
   }
 
-  // Retry adapt step up to 2 times
-  let lastAdaptError: Error | null = null;
-  for (let attempt = 1; attempt <= 2; attempt++) {
-    try {
-      if (attempt > 1) console.log(`Adapt step retry attempt ${attempt}...`);
-      
-      const data = await kieChat(apiKey, {
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userContent },
-        ],
-        tools: [
-          {
-            type: "function",
-            function: {
-              name: "creative_directive",
-              description: "Output the complete creative directive mapping the reference concept to the brand.",
-              parameters: {
+  // Shared chat body — identical for kie primary and Lovable AI fallback so
+  // output character stays consistent. Don't include `model` here; kieChat
+  // uses kie's default and lovableChat injects google/gemini-2.5-pro.
+  const adaptBody = {
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userContent },
+    ],
+    tools: [
+      {
+        type: "function",
+        function: {
+          name: "creative_directive",
+          description: "Output the complete creative directive mapping the reference concept to the brand.",
+          parameters: {
+            type: "object",
+            properties: {
+              headline: { type: "string", description: "Exact headline text, ≤8 words" },
+              subcopy: { type: "string", description: "Exact subcopy text, ≤20 words" },
+              cta_text: { type: "string", description: "Exact CTA text" },
+              selected_assets: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    index: { type: "number" },
+                    role: { type: "string" },
+                    placement: { type: "string" },
+                    reason: { type: "string" },
+                  },
+                  required: ["index", "role", "placement", "reason"],
+                  additionalProperties: false,
+                },
+              },
+              color_usage: {
                 type: "object",
                 properties: {
-                  headline: { type: "string", description: "Exact headline text, ≤8 words" },
-                  subcopy: { type: "string", description: "Exact subcopy text, ≤20 words" },
-                  cta_text: { type: "string", description: "Exact CTA text" },
-                  selected_assets: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      properties: {
-                        index: { type: "number" },
-                        role: { type: "string" },
-                        placement: { type: "string" },
-                        reason: { type: "string" },
-                      },
-                      required: ["index", "role", "placement", "reason"],
-                      additionalProperties: false,
-                    },
-                  },
-                  color_usage: {
-                    type: "object",
-                    properties: {
-                      background: { type: "string" },
-                      headline_color: { type: "string" },
-                      subcopy_color: { type: "string" },
-                      cta_background: { type: "string" },
-                      cta_text: { type: "string" },
-                    },
-                    required: ["background", "headline_color", "subcopy_color", "cta_background", "cta_text"],
-                    additionalProperties: false,
-                  },
-                  concept_adaptation: { type: "string" },
-                  logo_treatment: { type: "string" },
-                  compliance_notes: { type: "string" },
+                  background: { type: "string" },
+                  headline_color: { type: "string" },
+                  subcopy_color: { type: "string" },
+                  cta_background: { type: "string" },
+                  cta_text: { type: "string" },
                 },
-                required: ["headline", "subcopy", "cta_text", "selected_assets", "color_usage", "concept_adaptation", "logo_treatment", "compliance_notes"],
+                required: ["background", "headline_color", "subcopy_color", "cta_background", "cta_text"],
                 additionalProperties: false,
               },
+              concept_adaptation: { type: "string" },
+              logo_treatment: { type: "string" },
+              compliance_notes: { type: "string" },
             },
+            required: ["headline", "subcopy", "cta_text", "selected_assets", "color_usage", "concept_adaptation", "logo_treatment", "compliance_notes"],
+            additionalProperties: false,
           },
-        ],
-        tool_choice: { type: "function", function: { name: "creative_directive" } },
-      }, 90000);
+        },
+      },
+    ],
+    tool_choice: { type: "function", function: { name: "creative_directive" } },
+  } as Record<string, unknown>;
 
-      const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
-      if (!toolCall?.function?.arguments) {
-        // Try content fallback — use directive-specific extractor
-        const content = data.choices?.[0]?.message?.content;
-        if (content) {
-          const contentStr = typeof content === "string" ? content : JSON.stringify(content);
-          console.warn("Adapt: No tool_calls, trying directive content extraction...");
-          console.log("Adapt response content preview:", contentStr.slice(0, 300));
-          const extracted = extractDirectiveFromContent(contentStr);
-          if (extracted) {
-            console.log("Adapt: Successfully extracted directive from content fallback");
-            // Force-include logo
-            const hasLogoSelected = extracted.selected_assets?.some(
-              (sa) => sa.role.toLowerCase() === "logo"
-            );
-            if (!hasLogoSelected) {
-              const logoIndex = brandAssets.findIndex((a: any) => /\b(logo|logomark|brand\s*mark|brand\s*logo|symbol|monogram|emblem)\b/i.test(a.label || ""));
-              if (logoIndex >= 0) {
-                console.log(`Force-adding logo asset at index ${logoIndex}`);
-                extracted.selected_assets = [
-                  { index: logoIndex, role: "logo", placement: "top-left corner, with contrast backing if needed", reason: "Force-included: brand logo must appear" },
-                  ...(extracted.selected_assets || []),
-                ];
-              }
-            }
-            return extracted;
-          }
-        }
-        throw new Error("No directive extracted from Adapt step");
+  const forceLogo = (directive: CreativeDirective): CreativeDirective => {
+    const hasLogoSelected = directive.selected_assets?.some(
+      (sa) => sa.role.toLowerCase() === "logo"
+    );
+    if (!hasLogoSelected) {
+      const logoIndex = brandAssets.findIndex((a: any) => /\b(logo|logomark|brand\s*mark|brand\s*logo|symbol|monogram|emblem)\b/i.test(a.label || ""));
+      if (logoIndex >= 0) {
+        console.log(`Force-adding logo asset at index ${logoIndex}`);
+        directive.selected_assets = [
+          { index: logoIndex, role: "logo", placement: "top-left corner, with contrast backing if needed", reason: "Force-included: brand logo must appear" },
+          ...(directive.selected_assets || []),
+        ];
       }
+    }
+    return directive;
+  };
 
+  const processAdaptResponse = (data: any): CreativeDirective | null => {
+    const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
+    if (toolCall?.function?.arguments) {
       const directive: CreativeDirective = JSON.parse(toolCall.function.arguments);
       console.log("Adapt directive:", JSON.stringify({
         headline: directive.headline,
@@ -1238,23 +1377,31 @@ Look at the reference image AND each brand asset image. Visually evaluate which 
         cta: directive.cta_text,
         assetsSelected: directive.selected_assets?.length ?? 0,
       }));
-
-      // Force-include logo if brand has one but directive didn't select it
-      const hasLogoSelected = directive.selected_assets?.some(
-        (sa) => sa.role.toLowerCase() === "logo"
-      );
-      if (!hasLogoSelected) {
-        const logoIndex = brandAssets.findIndex((a: any) => /\b(logo|logomark|brand\s*mark|brand\s*logo|symbol|monogram|emblem)\b/i.test(a.label || ""));
-        if (logoIndex >= 0) {
-          console.log(`Force-adding logo asset at index ${logoIndex} (Adapt step missed it)`);
-          directive.selected_assets = [
-            { index: logoIndex, role: "logo", placement: "top-left corner, with contrast backing if needed", reason: "Force-included: brand logo must appear" },
-            ...(directive.selected_assets || []),
-          ];
-        }
+      return forceLogo(directive);
+    }
+    const content = data.choices?.[0]?.message?.content;
+    if (content) {
+      const contentStr = typeof content === "string" ? content : JSON.stringify(content);
+      console.warn("Adapt: No tool_calls, trying directive content extraction...");
+      console.log("Adapt response content preview:", contentStr.slice(0, 300));
+      const extracted = extractDirectiveFromContent(contentStr);
+      if (extracted) {
+        console.log("Adapt: Successfully extracted directive from content fallback");
+        return forceLogo(extracted);
       }
+    }
+    return null;
+  };
 
-      return directive;
+  // Retry adapt step up to 2 times on kie.ai
+  let lastAdaptError: Error | null = null;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      if (attempt > 1) console.log(`Adapt step retry attempt ${attempt}...`);
+      const data = await kieChat(apiKey, adaptBody, 90000);
+      const directive = processAdaptResponse(data);
+      if (directive) return directive;
+      throw new Error("No directive extracted from Adapt step");
     } catch (err: any) {
       lastAdaptError = err;
       console.error(`Adapt attempt ${attempt} failed:`, err.message);
@@ -1263,8 +1410,23 @@ Look at the reference image AND each brand asset image. Visually evaluate which 
     }
   }
 
-  throw lastAdaptError || new Error("Adapt step failed");
+  // kie.ai exhausted — try Lovable AI Gateway fallback with the same body.
+  console.warn("⚠️ All kie.ai Adapt attempts failed. Trying Lovable AI Gateway fallback...");
+  try {
+    const data = await lovableChat(adaptBody, 90000);
+    const directive = processAdaptResponse(data);
+    if (directive) {
+      console.log("✅ Adapt directive produced via Lovable AI fallback");
+      return directive;
+    }
+    throw new Error("Lovable AI fallback returned no directive");
+  } catch (fallbackErr: any) {
+    console.error("Lovable AI Adapt fallback also failed:", fallbackErr.message);
+    if (fallbackErr.message === "CREDITS_EXHAUSTED") throw fallbackErr;
+    throw new Error("ADAPT_DEGRADED: Both kie.ai and Lovable AI failed. " + (lastAdaptError?.message || fallbackErr.message));
+  }
 }
+
 
 // ─────────────────────────────────────────────────────
 // Step 3 — Generate creative using kie.ai image API

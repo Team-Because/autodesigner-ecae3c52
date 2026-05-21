@@ -1,77 +1,92 @@
-# MakeMyAd — Client Documentation PDF
+# Revised strategy — keep kie primary, add resilient fallback, don't constrain the brain
 
-I'll generate a single polished PDF (`/mnt/documents/MakeMyAd_Architecture_Overview.pdf`) you can hand to a client. No code in the app will change — this is a one-off document.
+## Guiding principles (from your feedback)
 
-## What the PDF will cover
+1. **kie stays primary** for all reasoning stages — it's cheaper and, when healthy, has been producing the quality we want.
+2. **Lovable AI Gateway is the fallback only** — kicks in when kie times out or returns malformed output.
+3. **Do not change how the system thinks.** No new rules, no new constraints, no prompt rewrites that narrow the model's freedom. The Organic Layout Derivation philosophy stays intact (`mem://features/studio/design-philosophy`).
+4. **Skip Phase 3 for now.** The asset/logo/brief rules already exist in memory and prompts — when the brain is healthy, they get applied. Tightening them further risks over-constraining.
 
-**1. Cover + Executive Summary**
-- What MakeMyAd is, who it's for (marketing agencies), the one-line pitch.
+## What we actually change
 
-**2. The Pitch — Why this beats "just use ChatGPT"**
-- Brand memory: every brand's logo, palette, voice, nevers, tagged assets are stored and re-applied automatically.
-- Reference-to-brand workflow: paste a competitor ad, get *your* brand's version in seconds — not a generic image.
-- Multi-asset enforcement: logo + 3D architecture + mascot composited correctly, not hallucinated.
-- Credit system, history, multi-account hub, Chrome extension — workflow tooling ChatGPT doesn't have.
-- Output is on-brand, agency-ready, in the right aspect ratio, every time.
+### Phase 1 — Add Lovable AI Gateway as fallback for reasoning stages
 
-**3. Technology Stack**
-- Frontend: React 18 + Vite + TypeScript + Tailwind + shadcn/ui + React Router + TanStack Query.
-- Backend (Lovable Cloud): Postgres + Auth + Storage + Edge Functions (Deno).
-- AI layer: kie.ai gateway → Nano Banana Pro (image gen) + GPT-5.4 (brief reasoning).
-- Chrome Extension (MV3) for in-browser context-menu generation.
+For each of the 3 reasoning stages, the call order becomes:
 
-**4. End-to-End Architecture Diagram (ASCII)**
-- Browser ↔ React app ↔ Supabase Auth/DB/Storage ↔ Edge Functions ↔ kie.ai (Banana + GPT).
+```text
+Framework Analysis:
+  1. kie.ai gemini-3-flash         (primary, current behavior)
+  2. kie.ai gemini-3-flash retry   (current retry, kept)
+  3. Lovable AI google/gemini-2.5-pro   (NEW fallback)
+  4. → only if all 3 fail, hard-fail (Phase 2)
 
-**5. Core User Flows (step-by-step)**
-- Auth & account switching
-- Brand setup (Paste & Parse + Master Prompt)
-- Generation flow (reference → brief reasoning → image gen → storage → history)
-- Admin flows (user creation, credit grants, global history)
-- Extension flow (right-click image → generate)
+Mood Selection:
+  1. kie.ai gemini-3-flash         (primary)
+  2. Lovable AI google/gemini-2.5-flash-lite   (NEW fallback)
+  3. → if both fail, default to first mood in pool (current behavior, low impact)
 
-**6. API Calls Inventory**
-For each Edge Function: purpose, trigger, external APIs called, credits consumed, typical latency.
-- `generate-creative` — the main one (GPT-5.4 brief pass + Banana Pro image, 1 credit)
-- `brand-autofill`
-- `admin-create-user`
-- `admin-reset-password`
-- `recover-generation`
-- `sweep-stuck-generations`
+Adapt / Directive:
+  1. kie.ai gemini-3-flash         (primary)
+  2. kie.ai gemini-3-flash retry   (current retry, kept)
+  3. Lovable AI google/gemini-2.5-pro   (NEW fallback)
+  4. → only if all fail, hard-fail (Phase 2)
+```
 
-**7. Code File Map**
-Walkthrough of every important file, grouped by purpose:
-- Routing & layout (`App.tsx`, `DashboardLayout.tsx`, `AppSidebar.tsx`)
-- Auth (`useAuth.tsx`, `accountVault.ts`, `ProtectedRoute.tsx`)
-- Brand hub (`BrandHub.tsx`, `BrandForm.tsx`, `PasteParseWizard.tsx`, `brandParser.ts`)
-- Studio (`Studio.tsx` + generation pipeline)
-- History (`History.tsx`)
-- Admin (`AdminDashboard/Users/Brands/Logs/History.tsx`)
-- Marketing site (`pages/marketing/*`)
-- Edge functions (`supabase/functions/*`)
-- Extension (`extension/*`)
+Key points:
+- **Same prompts, same tool-calling schemas, same system messages** sent to both providers. The fallback is a transport swap, not a logic swap.
+- **Same model family** (Gemini) on the fallback so output character stays consistent.
+- kie pricing is preserved on the happy path. Lovable AI only gets billed when kie is actually down.
 
-**8. Database Schema Overview**
-Tables: `brands`, `brand_assets`, `generations`, `user_credits`, `user_roles`, `profiles`, `activity_logs` — with relationships and RLS approach.
+### Phase 2 — Stop silent fallback to generic templates
 
-**9. Security Model**
-- Row-Level Security on every table
-- Roles in separate `user_roles` table with `has_role()` security-definer function
-- Server-side credit deduction, no client trust
+Today, when both Framework and Adapt fail, the code falls back to a hardcoded generic 6-zone template + bland copy, charges the credit, and ships a degraded image. This is what's been producing the "bland, off-brand" outputs this week.
 
-**10. Pricing / Cost Model (per generation)**
-- 1 credit per generation; underlying cost = GPT-5.4 brief tokens + Banana Pro image call.
+New behavior:
+- If Framework Analysis fails on kie primary + kie retry + Lovable AI fallback → **hard-fail the generation, refund the credit, surface "AI is temporarily degraded, please retry" toast.**
+- Same for Adapt / Directive.
+- Mood selection failure is fine to default — it's a low-impact pick-one task.
 
-**11. Roadmap-ready appendix**
-- Where to extend (new industries, new placement rules, video, etc.).
+The hardcoded fallback framework / fallback directive code paths get removed. Either we have a real reasoned output, or we tell the user and refund. No more silent quality drops.
 
-## How I'll build it
+### Phase 3 — Skipped (per your call)
 
-- Use Python + ReportLab to lay out a branded PDF (MakeMyAd Clean Futurism palette: #2563EB primary, #E5B800 accent, Outfit-style headings).
-- Pull real file paths and counts from the repo so the document is accurate, not generic.
-- ASCII architecture diagram inside a monospace code block.
-- QA every page as images before delivering, fix any overflow/layout issues, then drop the final `.pdf` in `/mnt/documents/` with a `<presentation-artifact>` link.
+The reference-isolation, logo force-inclusion, asset cap, brief priority, and mood rotation rules are already in the codebase and memory. Leave them. Once Phase 1+2 are in, these rules will start running again as designed — they were being bypassed by the silent fallback, not weakened.
 
-Estimated length: ~14–20 pages.
+## What this fixes, mapped to your asks
 
-Approve and I'll generate it.
+| Concern | How it gets fixed without constraining the system |
+|---|---|
+| Thinking quality | When kie's reasoning endpoint times out, Gemini 2.5 Pro on Lovable AI takes the same prompt and produces a real reasoned output instead of the hardcoded generic template. |
+| Design quality | Framework Analysis actually runs to completion → real reference-derived blueprint, not a generic 6-zone fallback. |
+| Creativity | Mood rotation + Adapt's copywriting freedom both stay intact — they just stop being skipped. |
+| Reference understanding | Same prompts, same memory rules; the model that reads the reference is just guaranteed to actually run. |
+| Asset & logo handling | Adapt stage runs to completion → asset selection and logo force-inclusion logic actually executes. |
+| Brand-line adaptation | Brand brief and voice rules flow through unchanged; the Adapt model just stops being bypassed. |
+
+## Technical scope
+
+**Files touched:**
+- `supabase/functions/generate-creative/index.ts` — add a `callLovableAI()` helper, add fallback branch after kie retries in `analyzeFramework()` and `adaptDirective()` (and optionally `selectMood()`), remove the two hardcoded fallback template/directive blocks, replace with hard-fail + credit-refund path.
+
+**No changes to:**
+- Frontend (Studio, History, BrandHub) — UX unchanged.
+- Database schema — same `generations` table.
+- Image generation path — kie nano-banana-pro / banana-2 stays exactly as is.
+- System prompts / tool schemas / memory rules — unchanged.
+- Brand data, asset uploads, RLS, auth.
+
+**Secrets:** `LOVABLE_API_KEY` already present. `KIE_API_KEY` already present. Nothing to add.
+
+**Cost impact:** Near zero on the happy path (kie still primary). Lovable AI only billed when kie's chat endpoint is degraded — which is exactly the scenario where we'd rather pay a few cents than ship a bad ad.
+
+**Risk:** Low. We're adding a safety net under existing behavior, not replacing it.
+
+## Rollout
+
+1. Implement Phase 1 + Phase 2 together in one edge function update — they must ship together (fallback without hard-fail would just hide future degradations again, hard-fail without fallback would raise the failure rate).
+2. Test against the brands that were producing weak outputs today (Vaikunth Copy, Kalrav Alpine, Jaazzoo) — confirm that when kie is healthy, behavior is identical; and that when we simulate a kie timeout, Lovable AI fallback produces a real reasoned output of comparable character.
+3. Watch failure rate for 24h — expect today's ~12% failures to drop close to baseline ~3%, with the difference now coming through Lovable AI fallback instead of silent bland outputs.
+
+## What I need from you to proceed
+
+Just a "go" — no decisions, no secrets, no design questions. The plan stays inside the `generate-creative` edge function and changes no UX, no prompts, no rules.
