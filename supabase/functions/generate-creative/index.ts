@@ -1291,99 +1291,85 @@ Look at the reference image AND each brand asset image. Visually evaluate which 
     );
   }
 
-  // Retry adapt step up to 2 times
-  let lastAdaptError: Error | null = null;
-  for (let attempt = 1; attempt <= 2; attempt++) {
-    try {
-      if (attempt > 1) console.log(`Adapt step retry attempt ${attempt}...`);
-      
-      const data = await kieChat(apiKey, {
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userContent },
-        ],
-        tools: [
-          {
-            type: "function",
-            function: {
-              name: "creative_directive",
-              description: "Output the complete creative directive mapping the reference concept to the brand.",
-              parameters: {
+  // Shared chat body — identical for kie primary and Lovable AI fallback so
+  // output character stays consistent. Don't include `model` here; kieChat
+  // uses kie's default and lovableChat injects google/gemini-2.5-pro.
+  const adaptBody = {
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userContent },
+    ],
+    tools: [
+      {
+        type: "function",
+        function: {
+          name: "creative_directive",
+          description: "Output the complete creative directive mapping the reference concept to the brand.",
+          parameters: {
+            type: "object",
+            properties: {
+              headline: { type: "string", description: "Exact headline text, ≤8 words" },
+              subcopy: { type: "string", description: "Exact subcopy text, ≤20 words" },
+              cta_text: { type: "string", description: "Exact CTA text" },
+              selected_assets: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    index: { type: "number" },
+                    role: { type: "string" },
+                    placement: { type: "string" },
+                    reason: { type: "string" },
+                  },
+                  required: ["index", "role", "placement", "reason"],
+                  additionalProperties: false,
+                },
+              },
+              color_usage: {
                 type: "object",
                 properties: {
-                  headline: { type: "string", description: "Exact headline text, ≤8 words" },
-                  subcopy: { type: "string", description: "Exact subcopy text, ≤20 words" },
-                  cta_text: { type: "string", description: "Exact CTA text" },
-                  selected_assets: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      properties: {
-                        index: { type: "number" },
-                        role: { type: "string" },
-                        placement: { type: "string" },
-                        reason: { type: "string" },
-                      },
-                      required: ["index", "role", "placement", "reason"],
-                      additionalProperties: false,
-                    },
-                  },
-                  color_usage: {
-                    type: "object",
-                    properties: {
-                      background: { type: "string" },
-                      headline_color: { type: "string" },
-                      subcopy_color: { type: "string" },
-                      cta_background: { type: "string" },
-                      cta_text: { type: "string" },
-                    },
-                    required: ["background", "headline_color", "subcopy_color", "cta_background", "cta_text"],
-                    additionalProperties: false,
-                  },
-                  concept_adaptation: { type: "string" },
-                  logo_treatment: { type: "string" },
-                  compliance_notes: { type: "string" },
+                  background: { type: "string" },
+                  headline_color: { type: "string" },
+                  subcopy_color: { type: "string" },
+                  cta_background: { type: "string" },
+                  cta_text: { type: "string" },
                 },
-                required: ["headline", "subcopy", "cta_text", "selected_assets", "color_usage", "concept_adaptation", "logo_treatment", "compliance_notes"],
+                required: ["background", "headline_color", "subcopy_color", "cta_background", "cta_text"],
                 additionalProperties: false,
               },
+              concept_adaptation: { type: "string" },
+              logo_treatment: { type: "string" },
+              compliance_notes: { type: "string" },
             },
+            required: ["headline", "subcopy", "cta_text", "selected_assets", "color_usage", "concept_adaptation", "logo_treatment", "compliance_notes"],
+            additionalProperties: false,
           },
-        ],
-        tool_choice: { type: "function", function: { name: "creative_directive" } },
-      }, 90000);
+        },
+      },
+    ],
+    tool_choice: { type: "function", function: { name: "creative_directive" } },
+  } as Record<string, unknown>;
 
-      const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
-      if (!toolCall?.function?.arguments) {
-        // Try content fallback — use directive-specific extractor
-        const content = data.choices?.[0]?.message?.content;
-        if (content) {
-          const contentStr = typeof content === "string" ? content : JSON.stringify(content);
-          console.warn("Adapt: No tool_calls, trying directive content extraction...");
-          console.log("Adapt response content preview:", contentStr.slice(0, 300));
-          const extracted = extractDirectiveFromContent(contentStr);
-          if (extracted) {
-            console.log("Adapt: Successfully extracted directive from content fallback");
-            // Force-include logo
-            const hasLogoSelected = extracted.selected_assets?.some(
-              (sa) => sa.role.toLowerCase() === "logo"
-            );
-            if (!hasLogoSelected) {
-              const logoIndex = brandAssets.findIndex((a: any) => /\b(logo|logomark|brand\s*mark|brand\s*logo|symbol|monogram|emblem)\b/i.test(a.label || ""));
-              if (logoIndex >= 0) {
-                console.log(`Force-adding logo asset at index ${logoIndex}`);
-                extracted.selected_assets = [
-                  { index: logoIndex, role: "logo", placement: "top-left corner, with contrast backing if needed", reason: "Force-included: brand logo must appear" },
-                  ...(extracted.selected_assets || []),
-                ];
-              }
-            }
-            return extracted;
-          }
-        }
-        throw new Error("No directive extracted from Adapt step");
+  const forceLogo = (directive: CreativeDirective): CreativeDirective => {
+    const hasLogoSelected = directive.selected_assets?.some(
+      (sa) => sa.role.toLowerCase() === "logo"
+    );
+    if (!hasLogoSelected) {
+      const logoIndex = brandAssets.findIndex((a: any) => /\b(logo|logomark|brand\s*mark|brand\s*logo|symbol|monogram|emblem)\b/i.test(a.label || ""));
+      if (logoIndex >= 0) {
+        console.log(`Force-adding logo asset at index ${logoIndex}`);
+        directive.selected_assets = [
+          { index: logoIndex, role: "logo", placement: "top-left corner, with contrast backing if needed", reason: "Force-included: brand logo must appear" },
+          ...(directive.selected_assets || []),
+        ];
       }
+    }
+    return directive;
+  };
 
+  const processAdaptResponse = (data: any): CreativeDirective | null => {
+    const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
+    if (toolCall?.function?.arguments) {
       const directive: CreativeDirective = JSON.parse(toolCall.function.arguments);
       console.log("Adapt directive:", JSON.stringify({
         headline: directive.headline,
@@ -1391,23 +1377,31 @@ Look at the reference image AND each brand asset image. Visually evaluate which 
         cta: directive.cta_text,
         assetsSelected: directive.selected_assets?.length ?? 0,
       }));
-
-      // Force-include logo if brand has one but directive didn't select it
-      const hasLogoSelected = directive.selected_assets?.some(
-        (sa) => sa.role.toLowerCase() === "logo"
-      );
-      if (!hasLogoSelected) {
-        const logoIndex = brandAssets.findIndex((a: any) => /\b(logo|logomark|brand\s*mark|brand\s*logo|symbol|monogram|emblem)\b/i.test(a.label || ""));
-        if (logoIndex >= 0) {
-          console.log(`Force-adding logo asset at index ${logoIndex} (Adapt step missed it)`);
-          directive.selected_assets = [
-            { index: logoIndex, role: "logo", placement: "top-left corner, with contrast backing if needed", reason: "Force-included: brand logo must appear" },
-            ...(directive.selected_assets || []),
-          ];
-        }
+      return forceLogo(directive);
+    }
+    const content = data.choices?.[0]?.message?.content;
+    if (content) {
+      const contentStr = typeof content === "string" ? content : JSON.stringify(content);
+      console.warn("Adapt: No tool_calls, trying directive content extraction...");
+      console.log("Adapt response content preview:", contentStr.slice(0, 300));
+      const extracted = extractDirectiveFromContent(contentStr);
+      if (extracted) {
+        console.log("Adapt: Successfully extracted directive from content fallback");
+        return forceLogo(extracted);
       }
+    }
+    return null;
+  };
 
-      return directive;
+  // Retry adapt step up to 2 times on kie.ai
+  let lastAdaptError: Error | null = null;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      if (attempt > 1) console.log(`Adapt step retry attempt ${attempt}...`);
+      const data = await kieChat(apiKey, adaptBody, 90000);
+      const directive = processAdaptResponse(data);
+      if (directive) return directive;
+      throw new Error("No directive extracted from Adapt step");
     } catch (err: any) {
       lastAdaptError = err;
       console.error(`Adapt attempt ${attempt} failed:`, err.message);
@@ -1416,8 +1410,23 @@ Look at the reference image AND each brand asset image. Visually evaluate which 
     }
   }
 
-  throw lastAdaptError || new Error("Adapt step failed");
+  // kie.ai exhausted — try Lovable AI Gateway fallback with the same body.
+  console.warn("⚠️ All kie.ai Adapt attempts failed. Trying Lovable AI Gateway fallback...");
+  try {
+    const data = await lovableChat(adaptBody, 90000);
+    const directive = processAdaptResponse(data);
+    if (directive) {
+      console.log("✅ Adapt directive produced via Lovable AI fallback");
+      return directive;
+    }
+    throw new Error("Lovable AI fallback returned no directive");
+  } catch (fallbackErr: any) {
+    console.error("Lovable AI Adapt fallback also failed:", fallbackErr.message);
+    if (fallbackErr.message === "CREDITS_EXHAUSTED") throw fallbackErr;
+    throw new Error("ADAPT_DEGRADED: Both kie.ai and Lovable AI failed. " + (lastAdaptError?.message || fallbackErr.message));
+  }
 }
+
 
 // ─────────────────────────────────────────────────────
 // Step 3 — Generate creative using kie.ai image API
