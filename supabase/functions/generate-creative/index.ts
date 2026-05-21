@@ -963,10 +963,130 @@ Example of RIGHT composition note: "Information strip with 3-4 short data points
     }
   }
 
-  // Final fallback: use a minimal generic framework so generation can still proceed
-  console.warn("⚠️ All framework analysis attempts failed. Using minimal fallback framework.");
-  return buildMinimalFramework(aspectRatio);
+  // kie.ai chat endpoint failed all retries — try Lovable AI Gateway with the
+  // SAME prompt + tool schema before giving up. This is the resilience net so
+  // we never silently fall back to a hardcoded generic template.
+  console.warn("⚠️ All kie.ai framework attempts failed. Trying Lovable AI Gateway fallback...");
+  try {
+    let imageContent: any = { type: "image_url", image_url: { url: referenceImageUrl } };
+    if (!referenceImageUrl.startsWith("data:")) {
+      try {
+        const { base64 } = await downloadImageAsBase64(referenceImageUrl);
+        imageContent = { type: "image_url", image_url: { url: base64 } };
+      } catch (_) { /* keep URL */ }
+    }
+    const data = await lovableChat({
+      messages: [
+        {
+          role: "system",
+          content: `You are an expert visual design analyst specializing in ABSTRACT DESIGN PRINCIPLES.
+
+CRITICAL RULES:
+1. Describe layout zones by their DESIGN ROLE — NOT by their content.
+2. NEVER mention brand names, company names, product names, locations, dates, prices, phone numbers, or any specific text visible in the image.
+3. Use ONLY these zone_type categories: background, brand_mark, headline, subcopy, hero_visual, supporting_visual, info_strip, cta, footer, accent
+4. Describe SPATIAL RELATIONSHIPS, visual weight, and compositional principles — not what specific content fills each zone.
+5. For text_elements, describe the TYPOGRAPHIC STYLE (weight, case, size, contrast) — never the actual words.
+6. Think of yourself as extracting a REUSABLE TEMPLATE, not describing this specific ad.`,
+        },
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "Extract the ABSTRACT DESIGN FRAMEWORK from this advertisement. Focus on spatial layout, visual hierarchy, typographic style, and compositional principles. Do NOT describe any specific content — only design structure." },
+            imageContent,
+          ],
+        },
+      ],
+      tools: [{
+        type: "function",
+        function: {
+          name: "extract_design_framework",
+          description: "Extract a reusable, content-agnostic design framework from the reference image.",
+          parameters: {
+            type: "object",
+            properties: {
+              layout: {
+                type: "object",
+                properties: {
+                  orientation: { type: "string" },
+                  zones: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        name: { type: "string", enum: ["background","brand_mark","headline","subcopy","hero_visual","supporting_visual","info_strip","cta","footer","accent"] },
+                        position: { type: "string" },
+                        size: { type: "string" },
+                        description: { type: "string" },
+                      },
+                      required: ["name","position","size","description"],
+                      additionalProperties: false,
+                    },
+                  },
+                },
+                required: ["orientation","zones"],
+                additionalProperties: false,
+              },
+              style: {
+                type: "object",
+                properties: {
+                  background_type: { type: "string" },
+                  photography_style: { type: "string" },
+                  overlay: { type: "string" },
+                  mood: { type: "string" },
+                  color_scheme: { type: "string" },
+                },
+                required: ["background_type","photography_style","overlay","mood","color_scheme"],
+                additionalProperties: false,
+              },
+              text_elements: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    type: { type: "string", enum: ["headline","subcopy","cta","tagline","detail","footer"] },
+                    position: { type: "string" },
+                    font_style: { type: "string" },
+                    approximate_size: { type: "string" },
+                  },
+                  required: ["type","position","font_style","approximate_size"],
+                  additionalProperties: false,
+                },
+              },
+              composition_notes: { type: "string" },
+            },
+            required: ["layout","style","text_elements","composition_notes"],
+            additionalProperties: false,
+          },
+        },
+      }],
+      tool_choice: { type: "function", function: { name: "extract_design_framework" } },
+    }, 90000);
+
+    const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
+    if (toolCall?.function?.arguments) {
+      const framework = JSON.parse(toolCall.function.arguments);
+      console.log("✅ Framework extracted via Lovable AI fallback");
+      return framework;
+    }
+    const messageContent = data.choices?.[0]?.message?.content;
+    if (messageContent) {
+      const extracted = extractFrameworkFromContent(
+        typeof messageContent === "string" ? messageContent : JSON.stringify(messageContent)
+      );
+      if (extracted) {
+        console.log("✅ Framework extracted via Lovable AI fallback (content)");
+        return extracted;
+      }
+    }
+    throw new Error("Lovable AI fallback returned no framework");
+  } catch (fallbackErr: any) {
+    console.error("Lovable AI framework fallback also failed:", fallbackErr.message);
+    if (fallbackErr.message === "CREDITS_EXHAUSTED") throw fallbackErr;
+    throw new Error("FRAMEWORK_ANALYSIS_DEGRADED: Both kie.ai and Lovable AI failed. " + (lastError?.message || fallbackErr.message));
+  }
 }
+
 
 // ─────────────────────────────────────────────────────
 // Step 2 — Adapt: Map reference concept to brand
