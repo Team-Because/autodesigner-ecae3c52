@@ -1457,8 +1457,14 @@ function buildDirectivePrompt(
 
   return `⚠️⚠️⚠️ CRITICAL — OUTPUT SIZE IS ${spec.width}x${spec.height} PIXELS (${aspectRatioLabel}). THIS IS THE #1 RULE. ⚠️⚠️⚠️
 
-CONTENT ISOLATION: Reference image (IMAGE 1) = LAYOUT ONLY. Copy NO text/names/locations from it.
-IMAGE ISOLATION: NEVER reproduce reference imagery. ALL visuals must come from the brand asset images provided below.
+═══ IMAGE ROLES (READ FIRST) ═══
+• IMAGE 1 = REFERENCE. Use ONLY for layout, composition, zoning, type hierarchy, and visual energy.
+  ⛔ NEVER reuse its subjects, characters, people, buildings, products, mascots, locations, prices, currencies, logos, or text.
+  Treat IMAGE 1 like a wireframe overlay: read its STRUCTURE, ignore its CONTENT.
+• IMAGE 2 = BRAND LOGO. MUST appear in the output with exact letterforms, shapes, and colors.
+• IMAGES 3..N = BRAND ASSETS. These are the ONLY allowed visual subjects in the output.
+
+ANTI-LEAK: All people, places, buildings, products, mascots, graphics, and text in the final output MUST come from IMAGES 2..N and the brand data below. NOTHING visible in IMAGE 1 may appear in the output.
 
 ═══ CREATIVE DIRECTIVE ═══
 HEADLINE: "${directive.headline}"
@@ -1474,9 +1480,9 @@ CONCEPT: ${directive.concept_adaptation}
 LOGO: ${directive.logo_treatment}
 
 ═══ RULES ═══
-• Follow reference layout/composition/energy — adapt with brand assets + colors. NEVER recreate or imitate reference imagery
+• Follow IMAGE 1 layout/composition/energy ONLY — rebuild it using BRAND assets and BRAND colors. NEVER recreate or imitate IMAGE 1's imagery or copy.
 • Logo: reproduce EXACT letterforms, shapes, colors from the provided logo image. NEVER write "LOGO" as text
-• Architecture/3D: preserve exact building geometry. May enhance lighting/angle
+• Architecture/3D: preserve exact building geometry from brand assets. May enhance lighting/angle
 • Text on solid zones or panels only — NEVER on photos/renders
 • Headline bold + large, subcopy medium, CTA clean. Max 3 hierarchy levels
 • If logo contains brand name, do NOT repeat as text
@@ -1580,9 +1586,16 @@ async function generateCreative(
   let selectedAssets: any[];
 
   if (directive) {
+    // Dedupe selected asset indices, validate against brandAssets bounds
+    const seen = new Set<number>();
     const validIndices = directive.selected_assets
       .map((sa) => sa.index)
-      .filter((i) => i >= 0 && i < brandAssets.length);
+      .filter((i) => {
+        if (i < 0 || i >= brandAssets.length) return false;
+        if (seen.has(i)) return false;
+        seen.add(i);
+        return true;
+      });
     selectedAssets = validIndices.map((i) => {
       return { ...brandAssets[i], _originalIndex: i };
     });
@@ -1601,18 +1614,32 @@ async function generateCreative(
   // Include the system prompt + asset descriptions
   const promptParts: string[] = [systemPrompt];
 
-  // Add reference image instruction
-  promptParts.push("\nREFERENCE IMAGE: Use the first image_input as layout/style reference only — ignore all text/logos/names visible in it.");
+  // Reinforce reference role at the image-input level — the model sees this right
+  // before the multimodal image_input array. Reference is IMAGE 1 (layout only),
+  // logo is IMAGE 2 (mandatory), and brand assets follow as IMAGES 3..N.
+  promptParts.push(
+    "\nIMAGE 1 — REFERENCE (layout/composition/zoning blueprint ONLY). " +
+    "Do NOT depict any subject, person, building, product, text, location, price, or logo visible in IMAGE 1. " +
+    "Read its structure; ignore its content."
+  );
 
   // Collect all image URLs for image_input
   const imageInputUrls: string[] = [referenceImageUrl];
 
   if (directive) {
-    const sortedAssets = [...directive.selected_assets].sort((a, b) => {
-      const aIsLogo = a.role.toUpperCase() === "LOGO" ? 0 : 1;
-      const bIsLogo = b.role.toUpperCase() === "LOGO" ? 0 : 1;
-      return aIsLogo - bIsLogo;
-    });
+    // Dedupe sort key so the same asset can't appear twice in the input list.
+    const seenIdx = new Set<number>();
+    const sortedAssets = [...directive.selected_assets]
+      .filter((sa) => {
+        if (seenIdx.has(sa.index)) return false;
+        seenIdx.add(sa.index);
+        return true;
+      })
+      .sort((a, b) => {
+        const aIsLogo = a.role.toUpperCase() === "LOGO" ? 0 : 1;
+        const bIsLogo = b.role.toUpperCase() === "LOGO" ? 0 : 1;
+        return aIsLogo - bIsLogo;
+      });
 
     for (const sa of sortedAssets) {
       const asset = selectedAssets.find((a: any) => (a._originalIndex ?? -1) === sa.index);
@@ -1620,9 +1647,9 @@ async function generateCreative(
       const roleLabel = sa.role.toUpperCase();
       const imgNum = imageInputUrls.length + 1;
       if (roleLabel === "LOGO") {
-        promptParts.push(`\nIMAGE ${imgNum} — BRAND LOGO: Study this carefully — reproduce its exact letterforms, colors, shapes, and proportions. This is the ONLY logo to use.`);
+        promptParts.push(`\nIMAGE ${imgNum} — BRAND LOGO (mandatory in output): reproduce EXACT letterforms, colors, shapes, and proportions. This is the ONLY logo to use.`);
       } else {
-        promptParts.push(`\nIMAGE ${imgNum} — ${roleLabel}: ${sa.placement}`);
+        promptParts.push(`\nIMAGE ${imgNum} — BRAND ${roleLabel} (allowed visual subject): ${sa.placement}`);
       }
       imageInputUrls.push(asset.image_url);
     }
@@ -1795,10 +1822,15 @@ async function runGenerationPipeline(params: {
       await supabase.from("generations").update({ status: "generating" }).eq("id", generationId);
     } else {
       await supabase.from("generations").update({ status: "analyzing" }).eq("id", generationId);
+      const analyzeStart = Date.now();
       try {
         framework = await analyzeFramework(referenceImageUrl, apiKey, spec.aspectRatio);
+        console.log(`[Timing] framework_analysis total=${Date.now() - analyzeStart}ms`);
       } catch (err) {
-        await markFailed(`Framework analysis failed: ${err instanceof Error ? err.message : err}`);
+        console.error(`[Timing] framework_analysis failed total=${Date.now() - analyzeStart}ms`, err);
+        await markFailed(
+          `AI is temporarily degraded (framework step). Please retry — no credit was used. (${err instanceof Error ? err.message : err})`,
+        );
         return;
       }
 
@@ -1816,12 +1848,21 @@ async function runGenerationPipeline(params: {
     }
 
     // ── Step 2: Adapt ──
-    let directive: CreativeDirective | null = null;
+    // Hard-fail if Adapt fails on all tiers (kie primary + retry + Lovable AI fallback).
+    // No silent fallback to a generic directive — credits are only deducted on success,
+    // so the user is never charged for a degraded output.
+    let directive: CreativeDirective;
+    const adaptStart = Date.now();
     try {
       await supabase.from("generations").update({ status: "adapting" }).eq("id", generationId);
       directive = await adaptDirective(framework, brand, brandAssets, referenceImageUrl, spec, apiKey);
+      console.log(`[Timing] adapt_directive total=${Date.now() - adaptStart}ms`);
     } catch (err) {
-      console.warn("Adapt step failed, falling back to direct generation:", err);
+      console.error(`[Timing] adapt_directive failed total=${Date.now() - adaptStart}ms`, err);
+      await markFailed(
+        `AI is temporarily degraded (adapt step). Please retry — no credit was used. (${err instanceof Error ? err.message : err})`,
+      );
+      return;
     }
 
     // ── Step 3: Generate ──
@@ -1836,13 +1877,16 @@ async function runGenerationPipeline(params: {
       await supabase.from("generations").update({ kie_task_id: taskId }).eq("id", generationId);
     };
 
+    const renderStart = Date.now();
     try {
       const result = await generateCreative(
         framework, brand, brandAssets, referenceImageUrl, spec, apiKey, directive, persistTaskId,
       );
       imageBase64 = result.imageBase64;
       captionText = result.captionText;
+      console.log(`[Timing] image_render total=${Date.now() - renderStart}ms`);
     } catch (err: any) {
+      console.error(`[Timing] image_render failed total=${Date.now() - renderStart}ms`);
       await markFailed(err?.message || "AI generation failed");
       return;
     }
