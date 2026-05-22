@@ -1816,12 +1816,21 @@ async function runGenerationPipeline(params: {
     }
 
     // ── Step 2: Adapt ──
-    let directive: CreativeDirective | null = null;
+    // Hard-fail if Adapt fails on all tiers (kie primary + retry + Lovable AI fallback).
+    // No silent fallback to a generic directive — credits are only deducted on success,
+    // so the user is never charged for a degraded output.
+    let directive: CreativeDirective;
+    const adaptStart = Date.now();
     try {
       await supabase.from("generations").update({ status: "adapting" }).eq("id", generationId);
       directive = await adaptDirective(framework, brand, brandAssets, referenceImageUrl, spec, apiKey);
+      console.log(`[Timing] adapt_directive total=${Date.now() - adaptStart}ms`);
     } catch (err) {
-      console.warn("Adapt step failed, falling back to direct generation:", err);
+      console.error(`[Timing] adapt_directive failed total=${Date.now() - adaptStart}ms`, err);
+      await markFailed(
+        `AI is temporarily degraded (adapt step). Please retry — no credit was used. (${err instanceof Error ? err.message : err})`,
+      );
+      return;
     }
 
     // ── Step 3: Generate ──
