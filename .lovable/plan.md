@@ -1,92 +1,111 @@
-# Revised strategy — keep kie primary, add resilient fallback, don't constrain the brain
+# Plan: Restore generation quality (forward, not backward)
 
-## Guiding principles (from your feedback)
+Combines the drafted reliability plan with stronger reference-vs-brand prompt isolation. Reference still flows into the final image render as a layout guide; we just make it impossible for the renderer to confuse reference subjects with brand subjects.
 
-1. **kie stays primary** for all reasoning stages — it's cheaper and, when healthy, has been producing the quality we want.
-2. **Lovable AI Gateway is the fallback only** — kicks in when kie times out or returns malformed output.
-3. **Do not change how the system thinks.** No new rules, no new constraints, no prompt rewrites that narrow the model's freedom. The Organic Layout Derivation philosophy stays intact (`mem://features/studio/design-philosophy`).
-4. **Skip Phase 3 for now.** The asset/logo/brief rules already exist in memory and prompts — when the brain is healthy, they get applied. Tightening them further risks over-constraining.
+All changes are scoped to `supabase/functions/generate-creative/index.ts`. No frontend, schema, auth, or memory-rule changes.
 
-## What we actually change
+---
 
-### Phase 1 — Add Lovable AI Gateway as fallback for reasoning stages
+## Phase 1 — Lovable AI Gateway as fallback (kie stays primary)
 
-For each of the 3 reasoning stages, the call order becomes:
+For each reasoning stage, add a third tier after the existing kie attempts:
 
 ```text
 Framework Analysis:
-  1. kie.ai gemini-3-flash         (primary, current behavior)
-  2. kie.ai gemini-3-flash retry   (current retry, kept)
-  3. Lovable AI google/gemini-2.5-pro   (NEW fallback)
-  4. → only if all 3 fail, hard-fail (Phase 2)
+  1. kie.ai gemini-3-flash            (primary, unchanged)
+  2. kie.ai gemini-3-flash retry      (unchanged)
+  3. Lovable AI google/gemini-2.5-pro (NEW fallback)
 
 Mood Selection:
-  1. kie.ai gemini-3-flash         (primary)
-  2. Lovable AI google/gemini-2.5-flash-lite   (NEW fallback)
-  3. → if both fail, default to first mood in pool (current behavior, low impact)
+  1. kie.ai gemini-3-flash            (primary)
+  2. Lovable AI gemini-2.5-flash-lite (NEW fallback)
+  3. Default to first mood in pool    (low-impact safety net, kept)
 
 Adapt / Directive:
-  1. kie.ai gemini-3-flash         (primary)
-  2. kie.ai gemini-3-flash retry   (current retry, kept)
-  3. Lovable AI google/gemini-2.5-pro   (NEW fallback)
-  4. → only if all fail, hard-fail (Phase 2)
+  1. kie.ai gemini-3-flash            (primary)
+  2. kie.ai gemini-3-flash retry      (unchanged)
+  3. Lovable AI google/gemini-2.5-pro (NEW fallback)
 ```
 
-Key points:
-- **Same prompts, same tool-calling schemas, same system messages** sent to both providers. The fallback is a transport swap, not a logic swap.
-- **Same model family** (Gemini) on the fallback so output character stays consistent.
-- kie pricing is preserved on the happy path. Lovable AI only gets billed when kie is actually down.
+Same prompts, same tool-call schemas, same system messages on both providers — fallback is a transport swap only. Same model family (Gemini) on fallback so output character stays consistent. kie pricing preserved on happy path; Lovable AI only billed when kie is degraded.
 
-### Phase 2 — Stop silent fallback to generic templates
+## Phase 2 — Remove silent hardcoded fallbacks; hard-fail + refund instead
 
-Today, when both Framework and Adapt fail, the code falls back to a hardcoded generic 6-zone template + bland copy, charges the credit, and ships a degraded image. This is what's been producing the "bland, off-brand" outputs this week.
+Today, when Framework or Adapt fail, the code drops to a hardcoded generic 6-zone template + bland directive, **charges the credit, ships a degraded image**. This is what's been producing the off-brand, bland outputs.
 
 New behavior:
-- If Framework Analysis fails on kie primary + kie retry + Lovable AI fallback → **hard-fail the generation, refund the credit, surface "AI is temporarily degraded, please retry" toast.**
-- Same for Adapt / Directive.
-- Mood selection failure is fine to default — it's a low-impact pick-one task.
+- Framework Analysis fails on all 3 tiers → **abort generation, refund the credit, return error "AI is temporarily degraded, please retry"**.
+- Adapt / Directive fails on all 3 tiers → same.
+- Mood selection failure is fine to default — low-impact pick-one task.
+- Delete the hardcoded fallback framework block and the hardcoded fallback directive block.
 
-The hardcoded fallback framework / fallback directive code paths get removed. Either we have a real reasoned output, or we tell the user and refund. No more silent quality drops.
+Frontend already surfaces edge function errors as toasts — no UI work needed.
 
-### Phase 3 — Skipped (per your call)
+## Phase 3 — Harden reference-vs-brand isolation in the render prompt
 
-The reference-isolation, logo force-inclusion, asset cap, brief priority, and mood rotation rules are already in the codebase and memory. Leave them. Once Phase 1+2 are in, these rules will start running again as designed — they were being bypassed by the silent fallback, not weakened.
+Reference image stays in the final `image_input` list as a **layout/composition guide only** — not removed. We strengthen the prompt language sent to the image model so it stops copying reference subjects:
 
-## What this fixes, mapped to your asks
+1. **Explicit role labels** in the render prompt header:
+   - "Image 1 = REFERENCE (use for layout, composition, zoning, type hierarchy ONLY — never reuse its subjects, characters, locations, pricing, logos, or text)."
+   - "Image 2 = BRAND LOGO (must appear in output)."
+   - "Images 3..N = BRAND ASSETS (the ONLY allowed visual subjects)."
 
-| Concern | How it gets fixed without constraining the system |
-|---|---|
-| Thinking quality | When kie's reasoning endpoint times out, Gemini 2.5 Pro on Lovable AI takes the same prompt and produces a real reasoned output instead of the hardcoded generic template. |
-| Design quality | Framework Analysis actually runs to completion → real reference-derived blueprint, not a generic 6-zone fallback. |
-| Creativity | Mood rotation + Adapt's copywriting freedom both stay intact — they just stop being skipped. |
-| Reference understanding | Same prompts, same memory rules; the model that reads the reference is just guaranteed to actually run. |
-| Asset & logo handling | Adapt stage runs to completion → asset selection and logo force-inclusion logic actually executes. |
-| Brand-line adaptation | Brand brief and voice rules flow through unchanged; the Adapt model just stops being bypassed. |
+2. **Anti-leak directive** appended to the render prompt:
+   - "All people, buildings, products, mascots, and graphic elements in the output MUST come from Images 2..N. Do NOT depict any person, place, product, or text that appears in Image 1."
+   - "Treat Image 1 as a wireframe overlay would be treated — read its structure, ignore its content."
+
+3. **Negative list injection** — re-emphasize existing memory rules (`reference-guidelines`, `content-isolation-policy`, `image-role-labeling`) inline at render time, since they were being bypassed when Adapt silently fell back to the generic directive.
+
+4. **Asset selection hardening**:
+   - De-duplicate selected asset indices before building the render prompt.
+   - Keep logo force-inclusion regex (`logo-reliability` memory) intact.
+   - Validate that at least the logo + 1 brand asset are present before sending to render.
+
+No new memory rules, no new UI controls, no new prompts written from scratch — this is reinforcement of rules that already exist but were being skipped by the silent template fallback.
+
+## Phase 4 — Stage timing logs (for ongoing visibility)
+
+Add structured console logs at start/end of each stage with elapsed ms:
+`[Timing] framework_analysis: kie_attempt_1=8421ms ok` etc.
+So next time something gets slow, edge function logs immediately show where.
+
+---
 
 ## Technical scope
 
-**Files touched:**
-- `supabase/functions/generate-creative/index.ts` — add a `callLovableAI()` helper, add fallback branch after kie retries in `analyzeFramework()` and `adaptDirective()` (and optionally `selectMood()`), remove the two hardcoded fallback template/directive blocks, replace with hard-fail + credit-refund path.
+**File touched:** `supabase/functions/generate-creative/index.ts` only.
 
-**No changes to:**
-- Frontend (Studio, History, BrandHub) — UX unchanged.
-- Database schema — same `generations` table.
-- Image generation path — kie nano-banana-pro / banana-2 stays exactly as is.
-- System prompts / tool schemas / memory rules — unchanged.
-- Brand data, asset uploads, RLS, auth.
+**Helpers added:**
+- `callLovableAI(messages, model, tools?)` — Gemini-equivalent request shape.
+- Reusable wrappers `runFrameworkAnalysis()` and `runAdaptDirective()` with the 3-tier escalation.
+- `refundCredit(userId, generationId)` — increments credit, marks generation as `failed_refunded`.
 
-**Secrets:** `LOVABLE_API_KEY` already present. `KIE_API_KEY` already present. Nothing to add.
+**Removed:**
+- Hardcoded `FALLBACK_FRAMEWORK` block.
+- Hardcoded `FALLBACK_DIRECTIVE` block.
 
-**Cost impact:** Near zero on the happy path (kie still primary). Lovable AI only billed when kie's chat endpoint is degraded — which is exactly the scenario where we'd rather pay a few cents than ship a bad ad.
+**Unchanged:**
+- Frontend (Studio, History, BrandHub).
+- Database schema and RLS.
+- kie nano-banana-pro / banana-2 image-generation path.
+- All memory rules and existing system prompts.
+- Brand data, asset uploads, auth.
 
-**Risk:** Low. We're adding a safety net under existing behavior, not replacing it.
+**Secrets:** `KIE_API_KEY` and `LOVABLE_API_KEY` are already configured. Nothing to add.
+
+**Cost:** Near zero on happy path. Lovable AI only billed when kie is degraded.
+
+**Risk:** Low. Safety net added under existing behavior; refund means users are never charged for a bad output.
+
+---
 
 ## Rollout
 
-1. Implement Phase 1 + Phase 2 together in one edge function update — they must ship together (fallback without hard-fail would just hide future degradations again, hard-fail without fallback would raise the failure rate).
-2. Test against the brands that were producing weak outputs today (Vaikunth Copy, Kalrav Alpine, Jaazzoo) — confirm that when kie is healthy, behavior is identical; and that when we simulate a kie timeout, Lovable AI fallback produces a real reasoned output of comparable character.
-3. Watch failure rate for 24h — expect today's ~12% failures to drop close to baseline ~3%, with the difference now coming through Lovable AI fallback instead of silent bland outputs.
+1. Ship Phases 1–4 together in one edge function deploy (Phase 1 and 2 MUST ship together — fallback without hard-fail just hides degradations again; hard-fail without fallback raises failure rate).
+2. Test against the brands that produced weak outputs this week (Vaikunth Copy, Kalrav Alpine, Jaazzoo) — verify identical behavior when kie is healthy; verify reasoned (not generic) output when we simulate a kie timeout.
+3. Verify a reference with strong subjects (e.g., a competitor ad with people/products) no longer leaks those subjects into the rendered output.
+4. Watch logs for 24h — expect failure rate to drop near baseline ~3%, with most former silent-failures now flowing through Lovable AI fallback instead.
 
-## What I need from you to proceed
+## What I need from you
 
-Just a "go" — no decisions, no secrets, no design questions. The plan stays inside the `generate-creative` edge function and changes no UX, no prompts, no rules.
+A "go" to implement. No new secrets, no design questions, no UX changes.
