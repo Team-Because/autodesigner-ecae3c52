@@ -1457,8 +1457,14 @@ function buildDirectivePrompt(
 
   return `⚠️⚠️⚠️ CRITICAL — OUTPUT SIZE IS ${spec.width}x${spec.height} PIXELS (${aspectRatioLabel}). THIS IS THE #1 RULE. ⚠️⚠️⚠️
 
-CONTENT ISOLATION: Reference image (IMAGE 1) = LAYOUT ONLY. Copy NO text/names/locations from it.
-IMAGE ISOLATION: NEVER reproduce reference imagery. ALL visuals must come from the brand asset images provided below.
+═══ IMAGE ROLES (READ FIRST) ═══
+• IMAGE 1 = REFERENCE. Use ONLY for layout, composition, zoning, type hierarchy, and visual energy.
+  ⛔ NEVER reuse its subjects, characters, people, buildings, products, mascots, locations, prices, currencies, logos, or text.
+  Treat IMAGE 1 like a wireframe overlay: read its STRUCTURE, ignore its CONTENT.
+• IMAGE 2 = BRAND LOGO. MUST appear in the output with exact letterforms, shapes, and colors.
+• IMAGES 3..N = BRAND ASSETS. These are the ONLY allowed visual subjects in the output.
+
+ANTI-LEAK: All people, places, buildings, products, mascots, graphics, and text in the final output MUST come from IMAGES 2..N and the brand data below. NOTHING visible in IMAGE 1 may appear in the output.
 
 ═══ CREATIVE DIRECTIVE ═══
 HEADLINE: "${directive.headline}"
@@ -1474,9 +1480,9 @@ CONCEPT: ${directive.concept_adaptation}
 LOGO: ${directive.logo_treatment}
 
 ═══ RULES ═══
-• Follow reference layout/composition/energy — adapt with brand assets + colors. NEVER recreate or imitate reference imagery
+• Follow IMAGE 1 layout/composition/energy ONLY — rebuild it using BRAND assets and BRAND colors. NEVER recreate or imitate IMAGE 1's imagery or copy.
 • Logo: reproduce EXACT letterforms, shapes, colors from the provided logo image. NEVER write "LOGO" as text
-• Architecture/3D: preserve exact building geometry. May enhance lighting/angle
+• Architecture/3D: preserve exact building geometry from brand assets. May enhance lighting/angle
 • Text on solid zones or panels only — NEVER on photos/renders
 • Headline bold + large, subcopy medium, CTA clean. Max 3 hierarchy levels
 • If logo contains brand name, do NOT repeat as text
