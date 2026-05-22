@@ -1850,13 +1850,16 @@ async function runGenerationPipeline(params: {
       await supabase.from("generations").update({ kie_task_id: taskId }).eq("id", generationId);
     };
 
+    const renderStart = Date.now();
     try {
       const result = await generateCreative(
         framework, brand, brandAssets, referenceImageUrl, spec, apiKey, directive, persistTaskId,
       );
       imageBase64 = result.imageBase64;
       captionText = result.captionText;
+      console.log(`[Timing] image_render total=${Date.now() - renderStart}ms`);
     } catch (err: any) {
+      console.error(`[Timing] image_render failed total=${Date.now() - renderStart}ms`);
       await markFailed(err?.message || "AI generation failed");
       return;
     }
