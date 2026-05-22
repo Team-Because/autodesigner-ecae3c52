@@ -1604,7 +1604,7 @@ async function generateCreative(
       });
     selectedAssets = validIndices.map((i) => {
       return { ...brandAssets[i], _originalIndex: i };
-    }, LOVABLE_REASONING_TIMEOUT_MS);
+    });
 
     if (selectedAssets.length === 0 && brandAssets.length > 0) {
       selectedAssets = brandAssets.slice(0, 3).map((a: any, i: number) => ({ ...a, _originalIndex: i }));
