@@ -792,7 +792,7 @@ async function analyzeFramework(
   apiKey: string,
   aspectRatio = "16:9"
 ): Promise<Record<string, unknown>> {
-  const maxRetries = 3;
+  const maxRetries = 1;
   let lastError: Error | null = null;
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -926,7 +926,7 @@ Example of RIGHT composition note: "Information strip with 3-4 short data points
           },
         ],
         tool_choice: { type: "function", function: { name: "extract_design_framework" } },
-      }, 90000); // increased timeout for image analysis
+      }, KIE_REASONING_TIMEOUT_MS);
 
       // Try extracting from tool_calls first
       const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
@@ -1604,7 +1604,7 @@ async function generateCreative(
       });
     selectedAssets = validIndices.map((i) => {
       return { ...brandAssets[i], _originalIndex: i };
-    });
+    }, LOVABLE_REASONING_TIMEOUT_MS);
 
     if (selectedAssets.length === 0 && brandAssets.length > 0) {
       selectedAssets = brandAssets.slice(0, 3).map((a: any, i: number) => ({ ...a, _originalIndex: i }));
