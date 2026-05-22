@@ -20,6 +20,12 @@ const KIE_CHAT_BASE = `${KIE_API_BASE}/gemini-3-flash/v1/chat/completions`;
 const KIE_CREATE_TASK = `${KIE_API_BASE}/api/v1/jobs/createTask`;
 const KIE_TASK_STATUS = `${KIE_API_BASE}/api/v1/jobs/recordInfo`;
 
+// Reasoning stages must stay short so the background worker reaches image-render
+// before the edge runtime kills the job. Kie remains primary, but slow chat
+// calls now fail fast into Lovable AI instead of consuming 4–6 minutes in retries.
+const KIE_REASONING_TIMEOUT_MS = 45000;
+const LOVABLE_REASONING_TIMEOUT_MS = 60000;
+
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function throwIfKieApiError(payload: any) {
@@ -786,7 +792,7 @@ async function analyzeFramework(
   apiKey: string,
   aspectRatio = "16:9"
 ): Promise<Record<string, unknown>> {
-  const maxRetries = 3;
+  const maxRetries = 1;
   let lastError: Error | null = null;
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -920,7 +926,7 @@ Example of RIGHT composition note: "Information strip with 3-4 short data points
           },
         ],
         tool_choice: { type: "function", function: { name: "extract_design_framework" } },
-      }, 90000); // increased timeout for image analysis
+      }, KIE_REASONING_TIMEOUT_MS);
 
       // Try extracting from tool_calls first
       const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
@@ -1393,12 +1399,12 @@ Look at the reference image AND each brand asset image. Visually evaluate which 
     return null;
   };
 
-  // Retry adapt step up to 2 times on kie.ai
+  // Try kie.ai once, then fail fast to Lovable AI if chat is slow/degraded.
   let lastAdaptError: Error | null = null;
-  for (let attempt = 1; attempt <= 2; attempt++) {
+  for (let attempt = 1; attempt <= 1; attempt++) {
     try {
       if (attempt > 1) console.log(`Adapt step retry attempt ${attempt}...`);
-      const data = await kieChat(apiKey, adaptBody, 90000);
+      const data = await kieChat(apiKey, adaptBody, KIE_REASONING_TIMEOUT_MS);
       const directive = processAdaptResponse(data);
       if (directive) return directive;
       throw new Error("No directive extracted from Adapt step");
@@ -1406,14 +1412,14 @@ Look at the reference image AND each brand asset image. Visually evaluate which 
       lastAdaptError = err;
       console.error(`Adapt attempt ${attempt} failed:`, err.message);
       if (err.message === "CREDITS_EXHAUSTED" || err.message === "KIE_RATE_LIMITED") throw err;
-      if (attempt < 2) await sleep(3000);
+      if (attempt < 1) await sleep(3000);
     }
   }
 
   // kie.ai exhausted — try Lovable AI Gateway fallback with the same body.
   console.warn("⚠️ All kie.ai Adapt attempts failed. Trying Lovable AI Gateway fallback...");
   try {
-    const data = await lovableChat(adaptBody, 90000);
+    const data = await lovableChat(adaptBody, LOVABLE_REASONING_TIMEOUT_MS);
     const directive = processAdaptResponse(data);
     if (directive) {
       console.log("✅ Adapt directive produced via Lovable AI fallback");
