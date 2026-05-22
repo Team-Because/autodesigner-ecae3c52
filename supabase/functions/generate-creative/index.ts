@@ -20,6 +20,12 @@ const KIE_CHAT_BASE = `${KIE_API_BASE}/gemini-3-flash/v1/chat/completions`;
 const KIE_CREATE_TASK = `${KIE_API_BASE}/api/v1/jobs/createTask`;
 const KIE_TASK_STATUS = `${KIE_API_BASE}/api/v1/jobs/recordInfo`;
 
+// Reasoning stages must stay short so the background worker reaches image-render
+// before the edge runtime kills the job. Kie remains primary, but slow chat
+// calls now fail fast into Lovable AI instead of consuming 4–6 minutes in retries.
+const KIE_REASONING_TIMEOUT_MS = 45000;
+const LOVABLE_REASONING_TIMEOUT_MS = 60000;
+
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function throwIfKieApiError(payload: any) {
