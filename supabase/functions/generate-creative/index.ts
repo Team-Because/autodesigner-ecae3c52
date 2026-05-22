@@ -1795,10 +1795,15 @@ async function runGenerationPipeline(params: {
       await supabase.from("generations").update({ status: "generating" }).eq("id", generationId);
     } else {
       await supabase.from("generations").update({ status: "analyzing" }).eq("id", generationId);
+      const analyzeStart = Date.now();
       try {
         framework = await analyzeFramework(referenceImageUrl, apiKey, spec.aspectRatio);
+        console.log(`[Timing] framework_analysis total=${Date.now() - analyzeStart}ms`);
       } catch (err) {
-        await markFailed(`Framework analysis failed: ${err instanceof Error ? err.message : err}`);
+        console.error(`[Timing] framework_analysis failed total=${Date.now() - analyzeStart}ms`, err);
+        await markFailed(
+          `AI is temporarily degraded (framework step). Please retry — no credit was used. (${err instanceof Error ? err.message : err})`,
+        );
         return;
       }
 
