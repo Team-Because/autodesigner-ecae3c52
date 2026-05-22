@@ -1586,9 +1586,16 @@ async function generateCreative(
   let selectedAssets: any[];
 
   if (directive) {
+    // Dedupe selected asset indices, validate against brandAssets bounds
+    const seen = new Set<number>();
     const validIndices = directive.selected_assets
       .map((sa) => sa.index)
-      .filter((i) => i >= 0 && i < brandAssets.length);
+      .filter((i) => {
+        if (i < 0 || i >= brandAssets.length) return false;
+        if (seen.has(i)) return false;
+        seen.add(i);
+        return true;
+      });
     selectedAssets = validIndices.map((i) => {
       return { ...brandAssets[i], _originalIndex: i };
     });
@@ -1607,18 +1614,32 @@ async function generateCreative(
   // Include the system prompt + asset descriptions
   const promptParts: string[] = [systemPrompt];
 
-  // Add reference image instruction
-  promptParts.push("\nREFERENCE IMAGE: Use the first image_input as layout/style reference only — ignore all text/logos/names visible in it.");
+  // Reinforce reference role at the image-input level — the model sees this right
+  // before the multimodal image_input array. Reference is IMAGE 1 (layout only),
+  // logo is IMAGE 2 (mandatory), and brand assets follow as IMAGES 3..N.
+  promptParts.push(
+    "\nIMAGE 1 — REFERENCE (layout/composition/zoning blueprint ONLY). " +
+    "Do NOT depict any subject, person, building, product, text, location, price, or logo visible in IMAGE 1. " +
+    "Read its structure; ignore its content."
+  );
 
   // Collect all image URLs for image_input
   const imageInputUrls: string[] = [referenceImageUrl];
 
   if (directive) {
-    const sortedAssets = [...directive.selected_assets].sort((a, b) => {
-      const aIsLogo = a.role.toUpperCase() === "LOGO" ? 0 : 1;
-      const bIsLogo = b.role.toUpperCase() === "LOGO" ? 0 : 1;
-      return aIsLogo - bIsLogo;
-    });
+    // Dedupe sort key so the same asset can't appear twice in the input list.
+    const seenIdx = new Set<number>();
+    const sortedAssets = [...directive.selected_assets]
+      .filter((sa) => {
+        if (seenIdx.has(sa.index)) return false;
+        seenIdx.add(sa.index);
+        return true;
+      })
+      .sort((a, b) => {
+        const aIsLogo = a.role.toUpperCase() === "LOGO" ? 0 : 1;
+        const bIsLogo = b.role.toUpperCase() === "LOGO" ? 0 : 1;
+        return aIsLogo - bIsLogo;
+      });
 
     for (const sa of sortedAssets) {
       const asset = selectedAssets.find((a: any) => (a._originalIndex ?? -1) === sa.index);
@@ -1626,9 +1647,9 @@ async function generateCreative(
       const roleLabel = sa.role.toUpperCase();
       const imgNum = imageInputUrls.length + 1;
       if (roleLabel === "LOGO") {
-        promptParts.push(`\nIMAGE ${imgNum} — BRAND LOGO: Study this carefully — reproduce its exact letterforms, colors, shapes, and proportions. This is the ONLY logo to use.`);
+        promptParts.push(`\nIMAGE ${imgNum} — BRAND LOGO (mandatory in output): reproduce EXACT letterforms, colors, shapes, and proportions. This is the ONLY logo to use.`);
       } else {
-        promptParts.push(`\nIMAGE ${imgNum} — ${roleLabel}: ${sa.placement}`);
+        promptParts.push(`\nIMAGE ${imgNum} — BRAND ${roleLabel} (allowed visual subject): ${sa.placement}`);
       }
       imageInputUrls.push(asset.image_url);
     }
