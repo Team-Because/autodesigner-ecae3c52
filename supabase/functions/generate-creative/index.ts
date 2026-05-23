@@ -1021,12 +1021,9 @@ Example of RIGHT composition note: "Information strip with 3-4 short data points
   // we never silently fall back to a hardcoded generic template.
   console.warn("⚠️ All kie.ai framework attempts failed. Trying Lovable AI Gateway fallback...");
   try {
-    let imageContent: any = { type: "image_url", image_url: { url: referenceImageUrl } };
-    if (!referenceImageUrl.startsWith("data:")) {
-      try {
-        const { base64 } = await downloadImageAsBase64(referenceImageUrl);
-        imageContent = { type: "image_url", image_url: { url: base64 } };
-      } catch (_) { /* keep URL */ }
+    const imageContent = await buildLovableImagePart(referenceImageUrl, "framework reference image");
+    if (!imageContent) {
+      throw new Error("Reference image is too large for Lovable AI fallback");
     }
     const data = await lovableChat({
       messages: [
@@ -1114,7 +1111,7 @@ CRITICAL RULES:
         },
       }],
       tool_choice: { type: "function", function: { name: "extract_design_framework" } },
-    }, 90000);
+    }, LOVABLE_REASONING_TIMEOUT_MS);
 
     const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
     if (toolCall?.function?.arguments) {
