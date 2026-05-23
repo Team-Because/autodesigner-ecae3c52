@@ -436,6 +436,53 @@ async function downloadImageAsBase64(url: string): Promise<{ base64: string; byt
   return { base64, bytes };
 }
 
+const LOVABLE_MAX_IMAGE_BYTES = 28 * 1024 * 1024;
+
+function toLovableSafeImageUrl(url: string): string {
+  if (url.startsWith("data:")) return url;
+  try {
+    const parsed = new URL(url);
+    const publicMarker = "/storage/v1/object/public/";
+    const markerIndex = parsed.pathname.indexOf(publicMarker);
+    if (markerIndex >= 0) {
+      const objectPath = parsed.pathname.slice(markerIndex + publicMarker.length);
+      parsed.pathname = `/storage/v1/render/image/public/${objectPath}`;
+      parsed.searchParams.set("width", "1536");
+      parsed.searchParams.set("quality", "78");
+      parsed.searchParams.set("resize", "contain");
+      return parsed.toString();
+    }
+  } catch {
+    return url;
+  }
+  return url;
+}
+
+async function buildLovableImagePart(url: string, label: string): Promise<any | null> {
+  const safeUrl = toLovableSafeImageUrl(url);
+  if (safeUrl.startsWith("data:")) {
+    const approxBytes = Math.ceil((safeUrl.length - safeUrl.indexOf(",") - 1) * 0.75);
+    if (approxBytes > LOVABLE_MAX_IMAGE_BYTES) {
+      console.warn(`[Lovable fallback] Skipping ${label}: data URL is ${(approxBytes / 1024 / 1024).toFixed(1)}MB`);
+      return null;
+    }
+    return { type: "image_url", image_url: { url: safeUrl } };
+  }
+
+  try {
+    const head = await fetch(safeUrl, { method: "HEAD", signal: AbortSignal.timeout(8000) });
+    const length = Number(head.headers.get("content-length") || "0");
+    if (length > LOVABLE_MAX_IMAGE_BYTES) {
+      console.warn(`[Lovable fallback] Skipping ${label}: image is ${(length / 1024 / 1024).toFixed(1)}MB after transform`);
+      return null;
+    }
+  } catch (err) {
+    console.warn(`[Lovable fallback] Could not preflight ${label}; sending URL anyway`, err);
+  }
+
+  return { type: "image_url", image_url: { url: safeUrl } };
+}
+
 // ─── Creative direction moods for copy variation ───
 // Each mood is tagged with traits so we can filter by brand tone.
 type MoodEntry = {
