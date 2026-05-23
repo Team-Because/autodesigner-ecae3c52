@@ -1463,7 +1463,38 @@ Look at the reference image AND each brand asset image. Visually evaluate which 
   // kie.ai exhausted — try Lovable AI Gateway fallback with the same body.
   console.warn("⚠️ All kie.ai Adapt attempts failed. Trying Lovable AI Gateway fallback...");
   try {
-    const data = await lovableChat(adaptBody, LOVABLE_REASONING_TIMEOUT_MS);
+    const fallbackUserContent: any[] = [
+      { type: "text", text: userMessage },
+      { type: "text", text: "REFERENCE IMAGE (layout/style inspiration only — ignore all text/content in it):" },
+    ];
+    const referencePart = await buildLovableImagePart(referenceImageUrl, "adapt reference image");
+    if (referencePart) fallbackUserContent.push(referencePart);
+
+    let includedAssets = 0;
+    for (let i = 0; i < brandAssets.length && includedAssets < 6; i++) {
+      const asset = brandAssets[i];
+      const imagePart = await buildLovableImagePart(asset.image_url, `adapt brand asset [${i}]`);
+      if (!imagePart) continue;
+      fallbackUserContent.push(
+        { type: "text", text: `BRAND ASSET [${i}] "${asset.label || "Unlabeled"}":` },
+        imagePart,
+      );
+      includedAssets += 1;
+    }
+
+    if (!referencePart && includedAssets === 0) {
+      throw new Error("No fallback-safe images available for Adapt step");
+    }
+
+    const fallbackAdaptBody = {
+      ...adaptBody,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: fallbackUserContent },
+      ],
+    } as Record<string, unknown>;
+
+    const data = await lovableChat(fallbackAdaptBody, LOVABLE_REASONING_TIMEOUT_MS);
     const directive = processAdaptResponse(data);
     if (directive) {
       console.log("✅ Adapt directive produced via Lovable AI fallback");
