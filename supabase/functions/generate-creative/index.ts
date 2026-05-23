@@ -436,6 +436,53 @@ async function downloadImageAsBase64(url: string): Promise<{ base64: string; byt
   return { base64, bytes };
 }
 
+const LOVABLE_MAX_IMAGE_BYTES = 28 * 1024 * 1024;
+
+function toLovableSafeImageUrl(url: string): string {
+  if (url.startsWith("data:")) return url;
+  try {
+    const parsed = new URL(url);
+    const publicMarker = "/storage/v1/object/public/";
+    const markerIndex = parsed.pathname.indexOf(publicMarker);
+    if (markerIndex >= 0) {
+      const objectPath = parsed.pathname.slice(markerIndex + publicMarker.length);
+      parsed.pathname = `/storage/v1/render/image/public/${objectPath}`;
+      parsed.searchParams.set("width", "1536");
+      parsed.searchParams.set("quality", "78");
+      parsed.searchParams.set("resize", "contain");
+      return parsed.toString();
+    }
+  } catch {
+    return url;
+  }
+  return url;
+}
+
+async function buildLovableImagePart(url: string, label: string): Promise<any | null> {
+  const safeUrl = toLovableSafeImageUrl(url);
+  if (safeUrl.startsWith("data:")) {
+    const approxBytes = Math.ceil((safeUrl.length - safeUrl.indexOf(",") - 1) * 0.75);
+    if (approxBytes > LOVABLE_MAX_IMAGE_BYTES) {
+      console.warn(`[Lovable fallback] Skipping ${label}: data URL is ${(approxBytes / 1024 / 1024).toFixed(1)}MB`);
+      return null;
+    }
+    return { type: "image_url", image_url: { url: safeUrl } };
+  }
+
+  try {
+    const head = await fetch(safeUrl, { method: "HEAD", signal: AbortSignal.timeout(8000) });
+    const length = Number(head.headers.get("content-length") || "0");
+    if (length > LOVABLE_MAX_IMAGE_BYTES) {
+      console.warn(`[Lovable fallback] Skipping ${label}: image is ${(length / 1024 / 1024).toFixed(1)}MB after transform`);
+      return null;
+    }
+  } catch (err) {
+    console.warn(`[Lovable fallback] Could not preflight ${label}; sending URL anyway`, err);
+  }
+
+  return { type: "image_url", image_url: { url: safeUrl } };
+}
+
 // ─── Creative direction moods for copy variation ───
 // Each mood is tagged with traits so we can filter by brand tone.
 type MoodEntry = {
@@ -974,12 +1021,9 @@ Example of RIGHT composition note: "Information strip with 3-4 short data points
   // we never silently fall back to a hardcoded generic template.
   console.warn("⚠️ All kie.ai framework attempts failed. Trying Lovable AI Gateway fallback...");
   try {
-    let imageContent: any = { type: "image_url", image_url: { url: referenceImageUrl } };
-    if (!referenceImageUrl.startsWith("data:")) {
-      try {
-        const { base64 } = await downloadImageAsBase64(referenceImageUrl);
-        imageContent = { type: "image_url", image_url: { url: base64 } };
-      } catch (_) { /* keep URL */ }
+    const imageContent = await buildLovableImagePart(referenceImageUrl, "framework reference image");
+    if (!imageContent) {
+      throw new Error("Reference image is too large for Lovable AI fallback");
     }
     const data = await lovableChat({
       messages: [
@@ -1067,7 +1111,7 @@ CRITICAL RULES:
         },
       }],
       tool_choice: { type: "function", function: { name: "extract_design_framework" } },
-    }, 90000);
+    }, LOVABLE_REASONING_TIMEOUT_MS);
 
     const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
     if (toolCall?.function?.arguments) {
@@ -1419,7 +1463,38 @@ Look at the reference image AND each brand asset image. Visually evaluate which 
   // kie.ai exhausted — try Lovable AI Gateway fallback with the same body.
   console.warn("⚠️ All kie.ai Adapt attempts failed. Trying Lovable AI Gateway fallback...");
   try {
-    const data = await lovableChat(adaptBody, LOVABLE_REASONING_TIMEOUT_MS);
+    const fallbackUserContent: any[] = [
+      { type: "text", text: userMessage },
+      { type: "text", text: "REFERENCE IMAGE (layout/style inspiration only — ignore all text/content in it):" },
+    ];
+    const referencePart = await buildLovableImagePart(referenceImageUrl, "adapt reference image");
+    if (referencePart) fallbackUserContent.push(referencePart);
+
+    let includedAssets = 0;
+    for (let i = 0; i < brandAssets.length && includedAssets < 6; i++) {
+      const asset = brandAssets[i];
+      const imagePart = await buildLovableImagePart(asset.image_url, `adapt brand asset [${i}]`);
+      if (!imagePart) continue;
+      fallbackUserContent.push(
+        { type: "text", text: `BRAND ASSET [${i}] "${asset.label || "Unlabeled"}":` },
+        imagePart,
+      );
+      includedAssets += 1;
+    }
+
+    if (!referencePart && includedAssets === 0) {
+      throw new Error("No fallback-safe images available for Adapt step");
+    }
+
+    const fallbackAdaptBody = {
+      ...adaptBody,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: fallbackUserContent },
+      ],
+    } as Record<string, unknown>;
+
+    const data = await lovableChat(fallbackAdaptBody, LOVABLE_REASONING_TIMEOUT_MS);
     const directive = processAdaptResponse(data);
     if (directive) {
       console.log("✅ Adapt directive produced via Lovable AI fallback");
