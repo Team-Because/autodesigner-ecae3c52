@@ -23,9 +23,13 @@ const KIE_TASK_STATUS = `${KIE_API_BASE}/api/v1/jobs/recordInfo`;
 // Reasoning stages must stay short so the background worker reaches image-render
 // before the edge runtime kills the job. Kie remains primary, but slow chat
 // calls now fail fast into Lovable AI instead of consuming 4–6 minutes in retries.
-const KIE_REASONING_TIMEOUT_MS = 75000;
-const LOVABLE_REASONING_TIMEOUT_MS = 90000;
-const LOVABLE_REASONING_TIMEOUT_FAST_MS = 60000;
+// Kie chat reasoning is currently very flaky — keep its budget tight so we fail
+// over to Lovable AI fast instead of burning minutes per stage. Worst-case path
+// per stage (Framework or Adapt) is now ~35+55+40 = 130s, leaving ample budget
+// for the 4–6 min image-render stage inside the edge runtime ceiling.
+const KIE_REASONING_TIMEOUT_MS = 35000;
+const LOVABLE_REASONING_TIMEOUT_MS = 55000;
+const LOVABLE_REASONING_TIMEOUT_FAST_MS = 40000;
 const LOVABLE_PRIMARY_MODEL = "google/gemini-2.5-pro";
 const LOVABLE_FAST_FALLBACK_MODEL = "google/gemini-2.5-flash";
 
