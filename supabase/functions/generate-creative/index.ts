@@ -1694,10 +1694,16 @@ function buildFallbackPrompt(
   const aspectRatioLabel = spec.aspectRatio;
   const frameworkJson = JSON.stringify(sanitizeFramework(framework), null, 2);
 
+  const fbSynthesisMode = !hasNonLogoAssets(brandAssets);
+  const isolationBlock = fbSynthesisMode
+    ? `CONTENT ISOLATION: The reference image (IMAGE 1) is for LAYOUT and VISUAL STYLE only. NEVER copy any text, names, locations, prices, currencies from it. ALL text comes from brand data below.
+IMAGE SYNTHESIS: No brand visual assets were uploaded beyond the logo. SYNTHESIZE an original, brand-appropriate hero visual (category-appropriate per the brand brief — e.g. an original architectural render, lifestyle scene, or product mock) honoring the brand's colors, mood, and visual nevers. Do NOT recreate the reference's specific subject.`
+    : `CONTENT ISOLATION: The reference image (IMAGE 1) is for LAYOUT and VISUAL STYLE only. NEVER copy any text, names, locations, prices, currencies from it. ALL text comes from brand data below.
+IMAGE ISOLATION: NEVER reproduce, copy, or recreate imagery from the reference. ALL visuals must come from the brand's own uploaded assets.`;
+
   return `⚠️⚠️⚠️ CRITICAL — OUTPUT SIZE IS ${spec.width}×${spec.height} PIXELS (${aspectRatioLabel}). THIS IS THE #1 RULE. ⚠️⚠️⚠️
 
-CONTENT ISOLATION: The reference image (IMAGE 1) is for LAYOUT and VISUAL STYLE only. NEVER copy any text, names, locations, prices, currencies from it. ALL text comes from brand data below.
-IMAGE ISOLATION: NEVER reproduce, copy, or recreate imagery from the reference. ALL visuals must come from the brand's own uploaded assets.
+${isolationBlock}
 
 ═══ DESIGN DIRECTION ═══
 Follow the reference image's layout, composition, and visual energy. Adapt it to the brand assets and colors below.
@@ -1715,7 +1721,7 @@ ${negativePrompts ? `\n⛔ NEVER INCLUDE: ${negativePrompts}` : ""}
 ${frameworkJson}
 
 ${hasAssets ? `BRAND ASSETS (${selectedAssets.length} images provided after reference):
-${assetRoleDescriptions}` : `No assets. Use "${brand.name}" text with brand colors.`}
+${assetRoleDescriptions}${fbSynthesisMode ? `\n\nNOTE: Only the logo was uploaded. SYNTHESIZE the hero visual from the brand brief — do not leave the hero zone empty and do not reproduce the reference's subject.` : ""}` : `No assets. Use "${brand.name}" text with brand colors.`}
 
 ⚠️⚠️⚠️ FINAL CHECK: Output MUST be ${spec.width}×${spec.height} pixels (${aspectRatioLabel}). Generate NOW.`;
 }
