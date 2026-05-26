@@ -1479,7 +1479,7 @@ Look at the reference image AND each brand asset image. Visually evaluate which 
 
   // Try kie.ai up to 2x (transient maintenance errors often pass on retry),
   // then fail over to Lovable AI Gateway.
-  const KIE_ADAPT_MAX_RETRIES = 2;
+  const KIE_ADAPT_MAX_RETRIES = 1;
   let lastAdaptError: Error | null = null;
   for (let attempt = 1; attempt <= KIE_ADAPT_MAX_RETRIES; attempt++) {
     try {
