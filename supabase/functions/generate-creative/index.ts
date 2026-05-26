@@ -23,8 +23,18 @@ const KIE_TASK_STATUS = `${KIE_API_BASE}/api/v1/jobs/recordInfo`;
 // Reasoning stages must stay short so the background worker reaches image-render
 // before the edge runtime kills the job. Kie remains primary, but slow chat
 // calls now fail fast into Lovable AI instead of consuming 4–6 minutes in retries.
-const KIE_REASONING_TIMEOUT_MS = 45000;
-const LOVABLE_REASONING_TIMEOUT_MS = 60000;
+const KIE_REASONING_TIMEOUT_MS = 75000;
+const LOVABLE_REASONING_TIMEOUT_MS = 90000;
+const LOVABLE_REASONING_TIMEOUT_FAST_MS = 60000;
+const LOVABLE_PRIMARY_MODEL = "google/gemini-2.5-pro";
+const LOVABLE_FAST_FALLBACK_MODEL = "google/gemini-2.5-flash";
+
+// Regex used both at asset-selection time and at prompt-build time to detect
+// logo-only brand libraries, so the renderer can synthesize on-brief imagery
+// when no hero/architecture/product assets are uploaded.
+const LOGO_LABEL_RE = /\b(logo|logomark|brand\s*mark|brand\s*logo|symbol|monogram|emblem)\b/i;
+const hasNonLogoAssets = (assets: any[]) =>
+  Array.isArray(assets) && assets.some((a: any) => !LOGO_LABEL_RE.test(a?.label || ""));
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
