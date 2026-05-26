@@ -1035,7 +1035,7 @@ Example of RIGHT composition note: "Information strip with 3-4 short data points
     if (!imageContent) {
       throw new Error("Reference image is too large for Lovable AI fallback");
     }
-    const data = await lovableChat({
+    const fallbackBody: Record<string, unknown> = {
       messages: [
         {
           role: "system",
@@ -1121,25 +1121,45 @@ CRITICAL RULES:
         },
       }],
       tool_choice: { type: "function", function: { name: "extract_design_framework" } },
-    }, LOVABLE_REASONING_TIMEOUT_MS);
+    };
 
-    const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
-    if (toolCall?.function?.arguments) {
-      const framework = JSON.parse(toolCall.function.arguments);
-      console.log("✅ Framework extracted via Lovable AI fallback");
-      return framework;
-    }
-    const messageContent = data.choices?.[0]?.message?.content;
-    if (messageContent) {
-      const extracted = extractFrameworkFromContent(
-        typeof messageContent === "string" ? messageContent : JSON.stringify(messageContent)
-      );
-      if (extracted) {
-        console.log("✅ Framework extracted via Lovable AI fallback (content)");
-        return extracted;
+    const parseFrameworkData = (data: any): Record<string, unknown> | null => {
+      const toolCall = data?.choices?.[0]?.message?.tool_calls?.[0];
+      if (toolCall?.function?.arguments) {
+        return JSON.parse(toolCall.function.arguments);
+      }
+      const messageContent = data?.choices?.[0]?.message?.content;
+      if (messageContent) {
+        const extracted = extractFrameworkFromContent(
+          typeof messageContent === "string" ? messageContent : JSON.stringify(messageContent)
+        );
+        if (extracted) return extracted;
+      }
+      return null;
+    };
+
+    // Try primary Lovable model first; on timeout/error, try the fast fallback model.
+    const lovableModels = [
+      { model: LOVABLE_PRIMARY_MODEL, timeout: LOVABLE_REASONING_TIMEOUT_MS, label: "pro" },
+      { model: LOVABLE_FAST_FALLBACK_MODEL, timeout: LOVABLE_REASONING_TIMEOUT_FAST_MS, label: "flash" },
+    ];
+    let lovableLastErr: any = null;
+    for (const { model, timeout, label } of lovableModels) {
+      try {
+        const data = await lovableChat(fallbackBody, timeout, model);
+        const fw = parseFrameworkData(data);
+        if (fw) {
+          console.log(`✅ Framework extracted via Lovable AI fallback (${label})`);
+          return fw;
+        }
+        lovableLastErr = new Error(`Lovable ${label} returned no framework`);
+      } catch (err: any) {
+        lovableLastErr = err;
+        console.warn(`Lovable AI framework fallback (${label}) failed:`, err.message);
+        if (err.message === "CREDITS_EXHAUSTED") throw err;
       }
     }
-    throw new Error("Lovable AI fallback returned no framework");
+    throw lovableLastErr ?? new Error("Lovable AI fallback returned no framework");
   } catch (fallbackErr: any) {
     console.error("Lovable AI framework fallback also failed:", fallbackErr.message);
     if (fallbackErr.message === "CREDITS_EXHAUSTED") throw fallbackErr;
