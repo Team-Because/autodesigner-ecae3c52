@@ -1473,11 +1473,13 @@ Look at the reference image AND each brand asset image. Visually evaluate which 
     return null;
   };
 
-  // Try kie.ai once, then fail fast to Lovable AI if chat is slow/degraded.
+  // Try kie.ai up to 2x (transient maintenance errors often pass on retry),
+  // then fail over to Lovable AI Gateway.
+  const KIE_ADAPT_MAX_RETRIES = 2;
   let lastAdaptError: Error | null = null;
-  for (let attempt = 1; attempt <= 1; attempt++) {
+  for (let attempt = 1; attempt <= KIE_ADAPT_MAX_RETRIES; attempt++) {
     try {
-      if (attempt > 1) console.log(`Adapt step retry attempt ${attempt}...`);
+      if (attempt > 1) console.log(`Adapt step retry attempt ${attempt}/${KIE_ADAPT_MAX_RETRIES}...`);
       const data = await kieChat(apiKey, adaptBody, KIE_REASONING_TIMEOUT_MS);
       const directive = processAdaptResponse(data);
       if (directive) return directive;
@@ -1486,7 +1488,7 @@ Look at the reference image AND each brand asset image. Visually evaluate which 
       lastAdaptError = err;
       console.error(`Adapt attempt ${attempt} failed:`, err.message);
       if (err.message === "CREDITS_EXHAUSTED" || err.message === "KIE_RATE_LIMITED") throw err;
-      if (attempt < 1) await sleep(3000);
+      if (attempt < KIE_ADAPT_MAX_RETRIES) await sleep(3000);
     }
   }
 
@@ -1524,13 +1526,28 @@ Look at the reference image AND each brand asset image. Visually evaluate which 
       ],
     } as Record<string, unknown>;
 
-    const data = await lovableChat(fallbackAdaptBody, LOVABLE_REASONING_TIMEOUT_MS);
-    const directive = processAdaptResponse(data);
-    if (directive) {
-      console.log("✅ Adapt directive produced via Lovable AI fallback");
-      return directive;
+    // Try primary Lovable model, then fast model as last resort.
+    const lovableModels = [
+      { model: LOVABLE_PRIMARY_MODEL, timeout: LOVABLE_REASONING_TIMEOUT_MS, label: "pro" },
+      { model: LOVABLE_FAST_FALLBACK_MODEL, timeout: LOVABLE_REASONING_TIMEOUT_FAST_MS, label: "flash" },
+    ];
+    let lovableLastErr: any = null;
+    for (const { model, timeout, label } of lovableModels) {
+      try {
+        const data = await lovableChat(fallbackAdaptBody, timeout, model);
+        const directive = processAdaptResponse(data);
+        if (directive) {
+          console.log(`✅ Adapt directive produced via Lovable AI fallback (${label})`);
+          return directive;
+        }
+        lovableLastErr = new Error(`Lovable ${label} returned no directive`);
+      } catch (err: any) {
+        lovableLastErr = err;
+        console.warn(`Lovable AI Adapt fallback (${label}) failed:`, err.message);
+        if (err.message === "CREDITS_EXHAUSTED") throw err;
+      }
     }
-    throw new Error("Lovable AI fallback returned no directive");
+    throw lovableLastErr ?? new Error("Lovable AI fallback returned no directive");
   } catch (fallbackErr: any) {
     console.error("Lovable AI Adapt fallback also failed:", fallbackErr.message);
     if (fallbackErr.message === "CREDITS_EXHAUSTED") throw fallbackErr;
