@@ -1583,16 +1583,38 @@ function buildDirectivePrompt(
   // Image prompt = visual nevers + general (legacy). Content nevers go to copy only.
   const negativePrompts = toCompactText([_nevers.visual, _nevers.general].filter(Boolean).join(" "), 3000);
 
-  return `⚠️⚠️⚠️ CRITICAL — OUTPUT SIZE IS ${spec.width}x${spec.height} PIXELS (${aspectRatioLabel}). THIS IS THE #1 RULE. ⚠️⚠️⚠️
+  // If the brand has no non-logo visual assets, the renderer would otherwise
+  // ship text+logo on a color field (since IMAGE 2..N would contain only the
+  // logo). Allow the model to SYNTHESIZE on-brief imagery from the brand brief
+  // in that case, while still forbidding reuse of reference-specific subjects.
+  const synthesisMode = !hasNonLogoAssets(selectedAssets);
 
-═══ IMAGE ROLES (READ FIRST) ═══
+  const imageRolesBlock = synthesisMode
+    ? `═══ IMAGE ROLES (READ FIRST) ═══
+• IMAGE 1 = REFERENCE. Use ONLY for layout, composition, zoning, type hierarchy, mood, and visual energy.
+  ⛔ NEVER reuse its specific subjects, characters, named people, named buildings, named products, mascots, locations, prices, currencies, logos, or text.
+  Read its STRUCTURE and MOOD; do not copy its CONTENT.
+• IMAGE 2 = BRAND LOGO. MUST appear in the output with exact letterforms, shapes, and colors.
+• NO additional brand assets were uploaded — you MUST SYNTHESIZE an original, brand-appropriate hero visual (e.g. an original architectural render for a real-estate brand, an original lifestyle scene, an original product mock) that honors the brand brief, color palette, and visual nevers.
+  The synthesized visual must be category-appropriate but visually ORIGINAL — not a recreation of IMAGE 1's specific subject.
+
+ANTI-LEAK: Text, names, locations, prices, and the logo must come from the brand data and IMAGE 2. The hero imagery is INVENTED based on the brand brief — do not reproduce IMAGE 1's specific scene.`
+    : `═══ IMAGE ROLES (READ FIRST) ═══
 • IMAGE 1 = REFERENCE. Use ONLY for layout, composition, zoning, type hierarchy, and visual energy.
   ⛔ NEVER reuse its subjects, characters, people, buildings, products, mascots, locations, prices, currencies, logos, or text.
   Treat IMAGE 1 like a wireframe overlay: read its STRUCTURE, ignore its CONTENT.
 • IMAGE 2 = BRAND LOGO. MUST appear in the output with exact letterforms, shapes, and colors.
 • IMAGES 3..N = BRAND ASSETS. These are the ONLY allowed visual subjects in the output.
 
-ANTI-LEAK: All people, places, buildings, products, mascots, graphics, and text in the final output MUST come from IMAGES 2..N and the brand data below. NOTHING visible in IMAGE 1 may appear in the output.
+ANTI-LEAK: All people, places, buildings, products, mascots, graphics, and text in the final output MUST come from IMAGES 2..N and the brand data below. NOTHING visible in IMAGE 1 may appear in the output.`;
+
+  const heroRule = synthesisMode
+    ? `• Hero imagery: SYNTHESIZE an original brand-appropriate visual from the brand brief + colors + mood — do NOT recreate IMAGE 1's subject or composition literally`
+    : `• Architecture/3D: preserve exact building geometry from brand assets. May enhance lighting/angle`;
+
+  return `⚠️⚠️⚠️ CRITICAL — OUTPUT SIZE IS ${spec.width}x${spec.height} PIXELS (${aspectRatioLabel}). THIS IS THE #1 RULE. ⚠️⚠️⚠️
+
+${imageRolesBlock}
 
 ═══ CREATIVE DIRECTIVE ═══
 HEADLINE: "${directive.headline}"
@@ -1608,9 +1630,9 @@ CONCEPT: ${directive.concept_adaptation}
 LOGO: ${directive.logo_treatment}
 
 ═══ RULES ═══
-• Follow IMAGE 1 layout/composition/energy ONLY — rebuild it using BRAND assets and BRAND colors. NEVER recreate or imitate IMAGE 1's imagery or copy.
+• Follow IMAGE 1 layout/composition/energy ONLY — rebuild it using BRAND colors and ${synthesisMode ? "an INVENTED brand-appropriate hero visual" : "BRAND assets"}. NEVER recreate or imitate IMAGE 1's specific imagery or copy.
 • Logo: reproduce EXACT letterforms, shapes, colors from the provided logo image. NEVER write "LOGO" as text
-• Architecture/3D: preserve exact building geometry from brand assets. May enhance lighting/angle
+${heroRule}
 • Text on solid zones or panels only — NEVER on photos/renders
 • Headline bold + large, subcopy medium, CTA clean. Max 3 hierarchy levels
 • If logo contains brand name, do NOT repeat as text
