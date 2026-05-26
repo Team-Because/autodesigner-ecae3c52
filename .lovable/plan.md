@@ -1,111 +1,93 @@
-# Plan: Restore generation quality (forward, not backward)
 
-Combines the drafted reliability plan with stronger reference-vs-brand prompt isolation. Reference still flows into the final image render as a layout guide; we just make it impossible for the renderer to confuse reference subjects with brand subjects.
+# Analysis
 
-All changes are scoped to `supabase/functions/generate-creative/index.ts`. No frontend, schema, auth, or memory-rule changes.
+## Issue 1 — Creek / Amansara have no imagery in outputs
 
----
+Both brands have **only a Logo asset in their library** (1 row each in `brand_assets`, labeled "Logo"). No architecture render, no hero/lifestyle photo, no mascot.
 
-## Phase 1 — Lovable AI Gateway as fallback (kie stays primary)
+Recent comparison:
+- **17–23 May completions**: visuals were synthesized from the brand brief + reference style (architectural mood, dusk skies, etc.) and logo was overlaid.
+- **24–26 May completions** (e.g. ecd355b3, 97c10273): mostly text-on-color with logo, no synthesized imagery.
 
-For each reasoning stage, add a third tier after the existing kie attempts:
+Cause is in `buildDirectivePrompt` / render-prompt assembly inside `supabase/functions/generate-creative/index.ts`:
 
 ```text
-Framework Analysis:
-  1. kie.ai gemini-3-flash            (primary, unchanged)
-  2. kie.ai gemini-3-flash retry      (unchanged)
-  3. Lovable AI google/gemini-2.5-pro (NEW fallback)
-
-Mood Selection:
-  1. kie.ai gemini-3-flash            (primary)
-  2. Lovable AI gemini-2.5-flash-lite (NEW fallback)
-  3. Default to first mood in pool    (low-impact safety net, kept)
-
-Adapt / Directive:
-  1. kie.ai gemini-3-flash            (primary)
-  2. kie.ai gemini-3-flash retry      (unchanged)
-  3. Lovable AI google/gemini-2.5-pro (NEW fallback)
+IMAGE ISOLATION: NEVER reproduce, copy, or recreate imagery from the reference.
+ALL visuals must come from the brand's own uploaded assets.
 ```
 
-Same prompts, same tool-call schemas, same system messages on both providers — fallback is a transport swap only. Same model family (Gemini) on fallback so output character stays consistent. kie pricing preserved on happy path; Lovable AI only billed when kie is degraded.
+…combined with the new per-image labels:
 
-## Phase 2 — Remove silent hardcoded fallbacks; hard-fail + refund instead
+```text
+IMAGE 1 — REFERENCE (layout/composition/zoning blueprint ONLY).
+Do NOT depict any subject, person, building, product, text, location, price,
+or logo visible in IMAGE 1. Read its structure; ignore its content.
+```
 
-Today, when Framework or Adapt fail, the code drops to a hardcoded generic 6-zone template + bland directive, **charges the credit, ships a degraded image**. This is what's been producing the off-brand, bland outputs.
+When a brand has **only a logo** (no hero/architecture/product assets), the model is told:
+1. Don't borrow any subject from the reference.
+2. Use only brand-uploaded assets — of which there are none beyond the logo.
 
-New behavior:
-- Framework Analysis fails on all 3 tiers → **abort generation, refund the credit, return error "AI is temporarily degraded, please retry"**.
-- Adapt / Directive fails on all 3 tiers → same.
-- Mood selection failure is fine to default — low-impact pick-one task.
-- Delete the hardcoded fallback framework block and the hardcoded fallback directive block.
+So it has nothing left to render and ships text + logo on a color field. Pre-Phase 3 prompts allowed the renderer to invent on-brief imagery from the brand brief, which is what Creek/Amansara used to get.
 
-Frontend already surfaces edge function errors as toasts — no UI work needed.
+## Issue 2 — ~48% generation failures over the last 3 days
 
-## Phase 3 — Harden reference-vs-brand isolation in the render prompt
+`generations` last 3 days: 35 completed, 32 failed, 1 processing. Edge function logs show the failure mode clearly:
 
-Reference image stays in the final `image_input` list as a **layout/composition guide only** — not removed. We strengthen the prompt language sent to the image model so it stops copying reference subjects:
+- kie.ai Framework Analysis: `Signal timed out` (45s cap) or `server is currently being maintained`
+- Lovable AI Gateway fallback: also `Signal timed out` (60s cap)
+- Both legs fail → hard-fail `AI is temporarily degraded`, no credit charged
 
-1. **Explicit role labels** in the render prompt header:
-   - "Image 1 = REFERENCE (use for layout, composition, zoning, type hierarchy ONLY — never reuse its subjects, characters, locations, pricing, logos, or text)."
-   - "Image 2 = BRAND LOGO (must appear in output)."
-   - "Images 3..N = BRAND ASSETS (the ONLY allowed visual subjects)."
+So kie is currently slow/flaky, and our fallback budget (45s kie + 60s Lovable, single attempt each) is too tight when both providers run hot.
 
-2. **Anti-leak directive** appended to the render prompt:
-   - "All people, buildings, products, mascots, and graphic elements in the output MUST come from Images 2..N. Do NOT depict any person, place, product, or text that appears in Image 1."
-   - "Treat Image 1 as a wireframe overlay would be treated — read its structure, ignore its content."
+# Plan
 
-3. **Negative list injection** — re-emphasize existing memory rules (`reference-guidelines`, `content-isolation-policy`, `image-role-labeling`) inline at render time, since they were being bypassed when Adapt silently fell back to the generic directive.
+Single file: `supabase/functions/generate-creative/index.ts`. No schema, frontend, or memory changes.
 
-4. **Asset selection hardening**:
-   - De-duplicate selected asset indices before building the render prompt.
-   - Keep logo force-inclusion regex (`logo-reliability` memory) intact.
-   - Validate that at least the logo + 1 brand asset are present before sending to render.
+## A — Bring back synthesized imagery when brand has no visual assets
 
-No new memory rules, no new UI controls, no new prompts written from scratch — this is reinforcement of rules that already exist but were being skipped by the silent template fallback.
+1. Detect "no hero visuals available": `brandAssets.filter(non-logo).length === 0`.
+2. When true, replace the strict IMAGE ISOLATION block in `buildDirectivePrompt` (and the parallel fallback prompt) with a softer variant:
+   - Still forbid copying reference **subjects, text, names, locations, prices, logos**.
+   - **Allow** synthesizing on-brief imagery from the brand brief (`Brand Guidelines & Brief` + Visual Direction) using the reference's composition/mood.
+   - Add explicit instruction: "Since no brand visual assets were uploaded, **invent** an image that visually represents the brand category (e.g. an original architectural render for a real-estate brand) honoring the brand brief, color palette, and visual nevers — do not recreate the reference's specific building/person/product."
+3. Keep the strict isolation behavior unchanged when the brand DOES have ≥1 non-logo asset (so Vaikunth / Kalrav / brands with proper asset libraries keep the existing strict behavior).
+4. Update the IMAGE 1 reinforcement line right before `image_input` so it conditionally allows "category-appropriate invented imagery" only in the asset-less case.
 
-## Phase 4 — Stage timing logs (for ongoing visibility)
+This restores the May 17–23 behavior for asset-less brands without re-introducing the leak problem for asset-rich brands.
 
-Add structured console logs at start/end of each stage with elapsed ms:
-`[Timing] framework_analysis: kie_attempt_1=8421ms ok` etc.
-So next time something gets slow, edge function logs immediately show where.
+## B — Reduce failure rate from reasoning-stage timeouts
 
----
+1. Raise `KIE_REASONING_TIMEOUT_MS` from 45s → 75s (kie.ai p95 on its good days is ~40–55s).
+2. Raise `LOVABLE_REASONING_TIMEOUT_MS` from 60s → 90s.
+3. Bump kie `maxRetries` for Framework + Adapt from 1 → 2 (one quick retry on transient maintenance errors).
+4. Add a **second Lovable AI fallback model** after `google/gemini-2.5-pro` fails: `google/gemini-2.5-flash` (faster, lighter — last-resort safety net before hard-fail). Same prompts, same tool schema.
+5. Total worst-case budget stays under the edge runtime ceiling: kie (2×75s) + Lovable Pro (90s) + Lovable Flash (60s) ≈ 5 min for framework + same for adapt — within `EdgeRuntime.waitUntil` async path that's already in place.
+6. Keep timing logs (`[Timing] framework_analysis`, `adapt_directive`) and add per-attempt provider/model labels so we can see which leg passed.
 
-## Technical scope
+## C — Verification
+
+After deploy:
+- Re-generate for Creek and Amansara → expect synthesized architectural/lifestyle imagery + logo, like the May 17 outputs.
+- Re-generate for a brand with proper hero assets (e.g. Vaikunth) → expect no leak from reference, only brand assets used.
+- Watch `[Timing]` logs over the next ~30 mins: expect failure rate to drop materially as the second Lovable fallback absorbs cases where both first attempts time out.
+
+# Technical scope
 
 **File touched:** `supabase/functions/generate-creative/index.ts` only.
 
-**Helpers added:**
-- `callLovableAI(messages, model, tools?)` — Gemini-equivalent request shape.
-- Reusable wrappers `runFrameworkAnalysis()` and `runAdaptDirective()` with the 3-tier escalation.
-- `refundCredit(userId, generationId)` — increments credit, marks generation as `failed_refunded`.
+**Functions modified:**
+- `buildDirectivePrompt` — branch on `nonLogoAssetCount === 0` for the isolation/synthesis block.
+- `buildFallbackPrompt` — same branching.
+- `generateCreative` — adjust the IMAGE 1 reinforcement line based on the same flag.
+- `analyzeFramework` / `adaptDirective` — raise timeouts, add second Lovable fallback model, bump kie retries to 2.
 
-**Removed:**
-- Hardcoded `FALLBACK_FRAMEWORK` block.
-- Hardcoded `FALLBACK_DIRECTIVE` block.
+**Constants changed:** `KIE_REASONING_TIMEOUT_MS`, `LOVABLE_REASONING_TIMEOUT_MS`, kie `maxRetries`.
 
-**Unchanged:**
-- Frontend (Studio, History, BrandHub).
-- Database schema and RLS.
-- kie nano-banana-pro / banana-2 image-generation path.
-- All memory rules and existing system prompts.
-- Brand data, asset uploads, auth.
+**Unchanged:** image-generation kie path, RLS, frontend, schema, all memory rules, credit logic.
 
-**Secrets:** `KIE_API_KEY` and `LOVABLE_API_KEY` are already configured. Nothing to add.
+**Risk:** Low. Asset-less path only loosens for brands that already had no imagery anyway; asset-rich brands keep the strict rules that protect Vaikunth/Kalrav.
 
-**Cost:** Near zero on happy path. Lovable AI only billed when kie is degraded.
+# What I need from you
 
-**Risk:** Low. Safety net added under existing behavior; refund means users are never charged for a bad output.
-
----
-
-## Rollout
-
-1. Ship Phases 1–4 together in one edge function deploy (Phase 1 and 2 MUST ship together — fallback without hard-fail just hides degradations again; hard-fail without fallback raises failure rate).
-2. Test against the brands that produced weak outputs this week (Vaikunth Copy, Kalrav Alpine, Jaazzoo) — verify identical behavior when kie is healthy; verify reasoned (not generic) output when we simulate a kie timeout.
-3. Verify a reference with strong subjects (e.g., a competitor ad with people/products) no longer leaks those subjects into the rendered output.
-4. Watch logs for 24h — expect failure rate to drop near baseline ~3%, with most former silent-failures now flowing through Lovable AI fallback instead.
-
-## What I need from you
-
-A "go" to implement. No new secrets, no design questions, no UX changes.
+A "go" to implement A + B together.
