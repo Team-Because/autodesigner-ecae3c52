@@ -1773,10 +1773,16 @@ async function generateCreative(
   // Reinforce reference role at the image-input level — the model sees this right
   // before the multimodal image_input array. Reference is IMAGE 1 (layout only),
   // logo is IMAGE 2 (mandatory), and brand assets follow as IMAGES 3..N.
+  const renderSynthesisMode = !hasNonLogoAssets(selectedAssets);
   promptParts.push(
-    "\nIMAGE 1 — REFERENCE (layout/composition/zoning blueprint ONLY). " +
-    "Do NOT depict any subject, person, building, product, text, location, price, or logo visible in IMAGE 1. " +
-    "Read its structure; ignore its content."
+    renderSynthesisMode
+      ? "\nIMAGE 1 — REFERENCE (layout/composition/zoning/mood blueprint ONLY). " +
+        "Do NOT copy IMAGE 1's specific subject, named person, named building, named product, text, location, price, or logo. " +
+        "No brand hero asset was uploaded — SYNTHESIZE an original brand-appropriate hero visual from the brand brief and colors. " +
+        "Read IMAGE 1's structure and mood; invent the content."
+      : "\nIMAGE 1 — REFERENCE (layout/composition/zoning blueprint ONLY). " +
+        "Do NOT depict any subject, person, building, product, text, location, price, or logo visible in IMAGE 1. " +
+        "Read its structure; ignore its content."
   );
 
   // Collect all image URLs for image_input
