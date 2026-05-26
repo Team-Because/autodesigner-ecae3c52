@@ -853,7 +853,7 @@ async function analyzeFramework(
   apiKey: string,
   aspectRatio = "16:9"
 ): Promise<Record<string, unknown>> {
-  const maxRetries = 2;
+  const maxRetries = 1;
   let lastError: Error | null = null;
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
