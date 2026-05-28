@@ -2062,12 +2062,44 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
 
   try {
+    // ── Authentication: require a valid JWT ──
+    const authHeader = req.headers.get("Authorization") || "";
+    const token = authHeader.replace(/^Bearer\s+/i, "");
+    if (!token) {
+      return new Response(
+        JSON.stringify({ error: "Unauthorized" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    const authClient = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_ANON_KEY")!
+    );
+    const { data: userData, error: userErr } = await authClient.auth.getUser(token);
+    if (userErr || !userData?.user) {
+      return new Response(
+        JSON.stringify({ error: "Unauthorized" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    const callerId = userData.user.id;
+
     const { brandId, referenceImageUrl, generationId, outputFormat = "landscape" } =
       await req.json();
 
     if (!brandId || !referenceImageUrl || !generationId) {
       return new Response(
         JSON.stringify({ error: "brandId, referenceImageUrl, and generationId are required" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // ── SSRF guard: only allow reference URLs from our own Supabase storage ──
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const storagePrefix = `${supabaseUrl}/storage/v1/`;
+    if (!referenceImageUrl.startsWith(storagePrefix)) {
+      return new Response(
+        JSON.stringify({ error: "referenceImageUrl must be a Supabase storage URL" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -2088,13 +2120,29 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // ── Pre-flight: credit check (synchronous so we can return 402 immediately) ──
+    // ── Ownership check: caller must own the generation row (or be admin) ──
     const { data: genRec } = await supabase
       .from("generations")
       .select("user_id")
       .eq("id", generationId)
       .single();
     const generationUserId: string | null = genRec?.user_id ?? null;
+    if (!generationUserId) {
+      return new Response(
+        JSON.stringify({ error: "Generation not found" }),
+        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    if (generationUserId !== callerId) {
+      const { data: roleRow } = await supabase
+        .from("user_roles").select("role").eq("user_id", callerId).eq("role", "admin").maybeSingle();
+      if (!roleRow) {
+        return new Response(
+          JSON.stringify({ error: "Forbidden" }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
 
     if (generationUserId) {
       const { data: creditData } = await supabase

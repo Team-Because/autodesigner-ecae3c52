@@ -22,6 +22,24 @@ serve(async (req) => {
   }
 
   try {
+    // Require a shared secret so random internet callers cannot disrupt
+    // in-progress generations. The pg_cron job (or operator) must send
+    // the `x-cron-secret` header matching the CRON_SECRET env var.
+    const expected = Deno.env.get("CRON_SECRET");
+    if (!expected) {
+      return new Response(
+        JSON.stringify({ ok: false, error: "CRON_SECRET not configured" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+    const provided = req.headers.get("x-cron-secret") || "";
+    if (provided !== expected) {
+      return new Response(
+        JSON.stringify({ ok: false, error: "Unauthorized" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
