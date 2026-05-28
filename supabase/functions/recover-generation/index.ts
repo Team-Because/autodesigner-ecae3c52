@@ -43,14 +43,21 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    // Auth: who is calling?
+    // Auth: REQUIRE a bearer token. Without this, anonymous callers could
+    // recover/complete any generation they know the ID of and deduct credits.
     const authHeader = req.headers.get("Authorization") || "";
     const token = authHeader.replace(/^Bearer\s+/i, "");
-    let callerId: string | null = null;
-    if (token) {
-      const { data: u } = await supabase.auth.getUser(token);
-      callerId = u?.user?.id ?? null;
-    }
+    if (!token) return json({ error: "Unauthorized" }, 401);
+
+    // Use service-role to bypass RLS — we still verify ownership below.
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
+
+    const { data: u, error: uErr } = await supabase.auth.getUser(token);
+    const callerId: string | null = u?.user?.id ?? null;
+    if (uErr || !callerId) return json({ error: "Unauthorized" }, 401);
 
     const { data: gen, error: genErr } = await supabase
       .from("generations")
@@ -61,7 +68,7 @@ serve(async (req) => {
     if (genErr || !gen) return json({ error: "Generation not found" }, 404);
 
     // Ownership check (admin can also recover)
-    if (callerId && gen.user_id !== callerId) {
+    if (gen.user_id !== callerId) {
       const { data: roleRow } = await supabase
         .from("user_roles").select("role").eq("user_id", callerId).eq("role", "admin").maybeSingle();
       if (!roleRow) return json({ error: "Forbidden" }, 403);
