@@ -49,12 +49,6 @@ serve(async (req) => {
     const token = authHeader.replace(/^Bearer\s+/i, "");
     if (!token) return json({ error: "Unauthorized" }, 401);
 
-    // Use service-role to bypass RLS — we still verify ownership below.
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-    );
-
     const { data: u, error: uErr } = await supabase.auth.getUser(token);
     const callerId: string | null = u?.user?.id ?? null;
     if (uErr || !callerId) return json({ error: "Unauthorized" }, 401);
