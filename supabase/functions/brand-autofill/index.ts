@@ -34,16 +34,39 @@ const INDUSTRY_CATEGORIES: Record<string, string[]> = {
 // ─── Lightweight URL scraping ───
 // Pulls title/description/og tags + first H1/H2 + visible body text snippet.
 // We deliberately avoid heavy HTML parsers — regex is fine for meta tags.
+function isSafePublicHttpsUrl(raw: string): boolean {
+  try {
+    const u = new URL(raw);
+    if (u.protocol !== "https:") return false;
+    const h = u.hostname.toLowerCase();
+    // Block private / loopback / link-local / cloud-metadata hosts
+    if (
+      h === "localhost" ||
+      h.endsWith(".localhost") ||
+      h === "0.0.0.0" ||
+      /^127\./.test(h) ||
+      /^10\./.test(h) ||
+      /^192\.168\./.test(h) ||
+      /^169\.254\./.test(h) ||
+      /^172\.(1[6-9]|2\d|3[0-1])\./.test(h) ||
+      h === "metadata.google.internal"
+    ) return false;
+    return true;
+  } catch { return false; }
+}
+
 async function scrapeUrl(url: string): Promise<{
   title: string;
   description: string;
   ogImage: string | null;
   bodyText: string;
 } | null> {
+  if (!isSafePublicHttpsUrl(url)) return null;
   try {
     const res = await fetch(url, {
       headers: { "User-Agent": "Mozilla/5.0 (compatible; MakeMyAdBot/1.0)" },
       signal: AbortSignal.timeout(12000),
+      redirect: "manual",
     });
     if (!res.ok) return null;
     const html = await res.text();
