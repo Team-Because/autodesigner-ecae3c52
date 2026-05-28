@@ -23,22 +23,8 @@ const KIE_TASK_STATUS = `${KIE_API_BASE}/api/v1/jobs/recordInfo`;
 // Reasoning stages must stay short so the background worker reaches image-render
 // before the edge runtime kills the job. Kie remains primary, but slow chat
 // calls now fail fast into Lovable AI instead of consuming 4–6 minutes in retries.
-// Kie chat reasoning is currently very flaky — keep its budget tight so we fail
-// over to Lovable AI fast instead of burning minutes per stage. Worst-case path
-// per stage (Framework or Adapt) is now ~35+55+40 = 130s, leaving ample budget
-// for the 4–6 min image-render stage inside the edge runtime ceiling.
-const KIE_REASONING_TIMEOUT_MS = 35000;
-const LOVABLE_REASONING_TIMEOUT_MS = 55000;
-const LOVABLE_REASONING_TIMEOUT_FAST_MS = 40000;
-const LOVABLE_PRIMARY_MODEL = "google/gemini-2.5-pro";
-const LOVABLE_FAST_FALLBACK_MODEL = "google/gemini-2.5-flash";
-
-// Regex used both at asset-selection time and at prompt-build time to detect
-// logo-only brand libraries, so the renderer can synthesize on-brief imagery
-// when no hero/architecture/product assets are uploaded.
-const LOGO_LABEL_RE = /\b(logo|logomark|brand\s*mark|brand\s*logo|symbol|monogram|emblem)\b/i;
-const hasNonLogoAssets = (assets: any[]) =>
-  Array.isArray(assets) && assets.some((a: any) => !LOGO_LABEL_RE.test(a?.label || ""));
+const KIE_REASONING_TIMEOUT_MS = 45000;
+const LOVABLE_REASONING_TIMEOUT_MS = 60000;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -1039,7 +1025,7 @@ Example of RIGHT composition note: "Information strip with 3-4 short data points
     if (!imageContent) {
       throw new Error("Reference image is too large for Lovable AI fallback");
     }
-    const fallbackBody: Record<string, unknown> = {
+    const data = await lovableChat({
       messages: [
         {
           role: "system",
@@ -1125,45 +1111,25 @@ CRITICAL RULES:
         },
       }],
       tool_choice: { type: "function", function: { name: "extract_design_framework" } },
-    };
+    }, LOVABLE_REASONING_TIMEOUT_MS);
 
-    const parseFrameworkData = (data: any): Record<string, unknown> | null => {
-      const toolCall = data?.choices?.[0]?.message?.tool_calls?.[0];
-      if (toolCall?.function?.arguments) {
-        return JSON.parse(toolCall.function.arguments);
-      }
-      const messageContent = data?.choices?.[0]?.message?.content;
-      if (messageContent) {
-        const extracted = extractFrameworkFromContent(
-          typeof messageContent === "string" ? messageContent : JSON.stringify(messageContent)
-        );
-        if (extracted) return extracted;
-      }
-      return null;
-    };
-
-    // Try primary Lovable model first; on timeout/error, try the fast fallback model.
-    const lovableModels = [
-      { model: LOVABLE_PRIMARY_MODEL, timeout: LOVABLE_REASONING_TIMEOUT_MS, label: "pro" },
-      { model: LOVABLE_FAST_FALLBACK_MODEL, timeout: LOVABLE_REASONING_TIMEOUT_FAST_MS, label: "flash" },
-    ];
-    let lovableLastErr: any = null;
-    for (const { model, timeout, label } of lovableModels) {
-      try {
-        const data = await lovableChat(fallbackBody, timeout, model);
-        const fw = parseFrameworkData(data);
-        if (fw) {
-          console.log(`✅ Framework extracted via Lovable AI fallback (${label})`);
-          return fw;
-        }
-        lovableLastErr = new Error(`Lovable ${label} returned no framework`);
-      } catch (err: any) {
-        lovableLastErr = err;
-        console.warn(`Lovable AI framework fallback (${label}) failed:`, err.message);
-        if (err.message === "CREDITS_EXHAUSTED") throw err;
+    const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
+    if (toolCall?.function?.arguments) {
+      const framework = JSON.parse(toolCall.function.arguments);
+      console.log("✅ Framework extracted via Lovable AI fallback");
+      return framework;
+    }
+    const messageContent = data.choices?.[0]?.message?.content;
+    if (messageContent) {
+      const extracted = extractFrameworkFromContent(
+        typeof messageContent === "string" ? messageContent : JSON.stringify(messageContent)
+      );
+      if (extracted) {
+        console.log("✅ Framework extracted via Lovable AI fallback (content)");
+        return extracted;
       }
     }
-    throw lovableLastErr ?? new Error("Lovable AI fallback returned no framework");
+    throw new Error("Lovable AI fallback returned no framework");
   } catch (fallbackErr: any) {
     console.error("Lovable AI framework fallback also failed:", fallbackErr.message);
     if (fallbackErr.message === "CREDITS_EXHAUSTED") throw fallbackErr;
@@ -1477,13 +1443,11 @@ Look at the reference image AND each brand asset image. Visually evaluate which 
     return null;
   };
 
-  // Try kie.ai up to 2x (transient maintenance errors often pass on retry),
-  // then fail over to Lovable AI Gateway.
-  const KIE_ADAPT_MAX_RETRIES = 1;
+  // Try kie.ai once, then fail fast to Lovable AI if chat is slow/degraded.
   let lastAdaptError: Error | null = null;
-  for (let attempt = 1; attempt <= KIE_ADAPT_MAX_RETRIES; attempt++) {
+  for (let attempt = 1; attempt <= 1; attempt++) {
     try {
-      if (attempt > 1) console.log(`Adapt step retry attempt ${attempt}/${KIE_ADAPT_MAX_RETRIES}...`);
+      if (attempt > 1) console.log(`Adapt step retry attempt ${attempt}...`);
       const data = await kieChat(apiKey, adaptBody, KIE_REASONING_TIMEOUT_MS);
       const directive = processAdaptResponse(data);
       if (directive) return directive;
@@ -1492,7 +1456,7 @@ Look at the reference image AND each brand asset image. Visually evaluate which 
       lastAdaptError = err;
       console.error(`Adapt attempt ${attempt} failed:`, err.message);
       if (err.message === "CREDITS_EXHAUSTED" || err.message === "KIE_RATE_LIMITED") throw err;
-      if (attempt < KIE_ADAPT_MAX_RETRIES) await sleep(3000);
+      if (attempt < 1) await sleep(3000);
     }
   }
 
@@ -1530,28 +1494,13 @@ Look at the reference image AND each brand asset image. Visually evaluate which 
       ],
     } as Record<string, unknown>;
 
-    // Try primary Lovable model, then fast model as last resort.
-    const lovableModels = [
-      { model: LOVABLE_PRIMARY_MODEL, timeout: LOVABLE_REASONING_TIMEOUT_MS, label: "pro" },
-      { model: LOVABLE_FAST_FALLBACK_MODEL, timeout: LOVABLE_REASONING_TIMEOUT_FAST_MS, label: "flash" },
-    ];
-    let lovableLastErr: any = null;
-    for (const { model, timeout, label } of lovableModels) {
-      try {
-        const data = await lovableChat(fallbackAdaptBody, timeout, model);
-        const directive = processAdaptResponse(data);
-        if (directive) {
-          console.log(`✅ Adapt directive produced via Lovable AI fallback (${label})`);
-          return directive;
-        }
-        lovableLastErr = new Error(`Lovable ${label} returned no directive`);
-      } catch (err: any) {
-        lovableLastErr = err;
-        console.warn(`Lovable AI Adapt fallback (${label}) failed:`, err.message);
-        if (err.message === "CREDITS_EXHAUSTED") throw err;
-      }
+    const data = await lovableChat(fallbackAdaptBody, LOVABLE_REASONING_TIMEOUT_MS);
+    const directive = processAdaptResponse(data);
+    if (directive) {
+      console.log("✅ Adapt directive produced via Lovable AI fallback");
+      return directive;
     }
-    throw lovableLastErr ?? new Error("Lovable AI fallback returned no directive");
+    throw new Error("Lovable AI fallback returned no directive");
   } catch (fallbackErr: any) {
     console.error("Lovable AI Adapt fallback also failed:", fallbackErr.message);
     if (fallbackErr.message === "CREDITS_EXHAUSTED") throw fallbackErr;
@@ -1587,38 +1536,16 @@ function buildDirectivePrompt(
   // Image prompt = visual nevers + general (legacy). Content nevers go to copy only.
   const negativePrompts = toCompactText([_nevers.visual, _nevers.general].filter(Boolean).join(" "), 3000);
 
-  // If the brand has no non-logo visual assets, the renderer would otherwise
-  // ship text+logo on a color field (since IMAGE 2..N would contain only the
-  // logo). Allow the model to SYNTHESIZE on-brief imagery from the brand brief
-  // in that case, while still forbidding reuse of reference-specific subjects.
-  const synthesisMode = !hasNonLogoAssets(selectedAssets);
+  return `⚠️⚠️⚠️ CRITICAL — OUTPUT SIZE IS ${spec.width}x${spec.height} PIXELS (${aspectRatioLabel}). THIS IS THE #1 RULE. ⚠️⚠️⚠️
 
-  const imageRolesBlock = synthesisMode
-    ? `═══ IMAGE ROLES (READ FIRST) ═══
-• IMAGE 1 = REFERENCE. Use ONLY for layout, composition, zoning, type hierarchy, mood, and visual energy.
-  ⛔ NEVER reuse its specific subjects, characters, named people, named buildings, named products, mascots, locations, prices, currencies, logos, or text.
-  Read its STRUCTURE and MOOD; do not copy its CONTENT.
-• IMAGE 2 = BRAND LOGO. MUST appear in the output with exact letterforms, shapes, and colors.
-• NO additional brand assets were uploaded — you MUST SYNTHESIZE an original, brand-appropriate hero visual (e.g. an original architectural render for a real-estate brand, an original lifestyle scene, an original product mock) that honors the brand brief, color palette, and visual nevers.
-  The synthesized visual must be category-appropriate but visually ORIGINAL — not a recreation of IMAGE 1's specific subject.
-
-ANTI-LEAK: Text, names, locations, prices, and the logo must come from the brand data and IMAGE 2. The hero imagery is INVENTED based on the brand brief — do not reproduce IMAGE 1's specific scene.`
-    : `═══ IMAGE ROLES (READ FIRST) ═══
+═══ IMAGE ROLES (READ FIRST) ═══
 • IMAGE 1 = REFERENCE. Use ONLY for layout, composition, zoning, type hierarchy, and visual energy.
   ⛔ NEVER reuse its subjects, characters, people, buildings, products, mascots, locations, prices, currencies, logos, or text.
   Treat IMAGE 1 like a wireframe overlay: read its STRUCTURE, ignore its CONTENT.
 • IMAGE 2 = BRAND LOGO. MUST appear in the output with exact letterforms, shapes, and colors.
 • IMAGES 3..N = BRAND ASSETS. These are the ONLY allowed visual subjects in the output.
 
-ANTI-LEAK: All people, places, buildings, products, mascots, graphics, and text in the final output MUST come from IMAGES 2..N and the brand data below. NOTHING visible in IMAGE 1 may appear in the output.`;
-
-  const heroRule = synthesisMode
-    ? `• Hero imagery: SYNTHESIZE an original brand-appropriate visual from the brand brief + colors + mood — do NOT recreate IMAGE 1's subject or composition literally`
-    : `• Architecture/3D: preserve exact building geometry from brand assets. May enhance lighting/angle`;
-
-  return `⚠️⚠️⚠️ CRITICAL — OUTPUT SIZE IS ${spec.width}x${spec.height} PIXELS (${aspectRatioLabel}). THIS IS THE #1 RULE. ⚠️⚠️⚠️
-
-${imageRolesBlock}
+ANTI-LEAK: All people, places, buildings, products, mascots, graphics, and text in the final output MUST come from IMAGES 2..N and the brand data below. NOTHING visible in IMAGE 1 may appear in the output.
 
 ═══ CREATIVE DIRECTIVE ═══
 HEADLINE: "${directive.headline}"
@@ -1634,9 +1561,9 @@ CONCEPT: ${directive.concept_adaptation}
 LOGO: ${directive.logo_treatment}
 
 ═══ RULES ═══
-• Follow IMAGE 1 layout/composition/energy ONLY — rebuild it using BRAND colors and ${synthesisMode ? "an INVENTED brand-appropriate hero visual" : "BRAND assets"}. NEVER recreate or imitate IMAGE 1's specific imagery or copy.
+• Follow IMAGE 1 layout/composition/energy ONLY — rebuild it using BRAND assets and BRAND colors. NEVER recreate or imitate IMAGE 1's imagery or copy.
 • Logo: reproduce EXACT letterforms, shapes, colors from the provided logo image. NEVER write "LOGO" as text
-${heroRule}
+• Architecture/3D: preserve exact building geometry from brand assets. May enhance lighting/angle
 • Text on solid zones or panels only — NEVER on photos/renders
 • Headline bold + large, subcopy medium, CTA clean. Max 3 hierarchy levels
 • If logo contains brand name, do NOT repeat as text
@@ -1698,16 +1625,10 @@ function buildFallbackPrompt(
   const aspectRatioLabel = spec.aspectRatio;
   const frameworkJson = JSON.stringify(sanitizeFramework(framework), null, 2);
 
-  const fbSynthesisMode = !hasNonLogoAssets(brandAssets);
-  const isolationBlock = fbSynthesisMode
-    ? `CONTENT ISOLATION: The reference image (IMAGE 1) is for LAYOUT and VISUAL STYLE only. NEVER copy any text, names, locations, prices, currencies from it. ALL text comes from brand data below.
-IMAGE SYNTHESIS: No brand visual assets were uploaded beyond the logo. SYNTHESIZE an original, brand-appropriate hero visual (category-appropriate per the brand brief — e.g. an original architectural render, lifestyle scene, or product mock) honoring the brand's colors, mood, and visual nevers. Do NOT recreate the reference's specific subject.`
-    : `CONTENT ISOLATION: The reference image (IMAGE 1) is for LAYOUT and VISUAL STYLE only. NEVER copy any text, names, locations, prices, currencies from it. ALL text comes from brand data below.
-IMAGE ISOLATION: NEVER reproduce, copy, or recreate imagery from the reference. ALL visuals must come from the brand's own uploaded assets.`;
-
   return `⚠️⚠️⚠️ CRITICAL — OUTPUT SIZE IS ${spec.width}×${spec.height} PIXELS (${aspectRatioLabel}). THIS IS THE #1 RULE. ⚠️⚠️⚠️
 
-${isolationBlock}
+CONTENT ISOLATION: The reference image (IMAGE 1) is for LAYOUT and VISUAL STYLE only. NEVER copy any text, names, locations, prices, currencies from it. ALL text comes from brand data below.
+IMAGE ISOLATION: NEVER reproduce, copy, or recreate imagery from the reference. ALL visuals must come from the brand's own uploaded assets.
 
 ═══ DESIGN DIRECTION ═══
 Follow the reference image's layout, composition, and visual energy. Adapt it to the brand assets and colors below.
@@ -1725,7 +1646,7 @@ ${negativePrompts ? `\n⛔ NEVER INCLUDE: ${negativePrompts}` : ""}
 ${frameworkJson}
 
 ${hasAssets ? `BRAND ASSETS (${selectedAssets.length} images provided after reference):
-${assetRoleDescriptions}${fbSynthesisMode ? `\n\nNOTE: Only the logo was uploaded. SYNTHESIZE the hero visual from the brand brief — do not leave the hero zone empty and do not reproduce the reference's subject.` : ""}` : `No assets. Use "${brand.name}" text with brand colors.`}
+${assetRoleDescriptions}` : `No assets. Use "${brand.name}" text with brand colors.`}
 
 ⚠️⚠️⚠️ FINAL CHECK: Output MUST be ${spec.width}×${spec.height} pixels (${aspectRatioLabel}). Generate NOW.`;
 }
@@ -1777,16 +1698,10 @@ async function generateCreative(
   // Reinforce reference role at the image-input level — the model sees this right
   // before the multimodal image_input array. Reference is IMAGE 1 (layout only),
   // logo is IMAGE 2 (mandatory), and brand assets follow as IMAGES 3..N.
-  const renderSynthesisMode = !hasNonLogoAssets(selectedAssets);
   promptParts.push(
-    renderSynthesisMode
-      ? "\nIMAGE 1 — REFERENCE (layout/composition/zoning/mood blueprint ONLY). " +
-        "Do NOT copy IMAGE 1's specific subject, named person, named building, named product, text, location, price, or logo. " +
-        "No brand hero asset was uploaded — SYNTHESIZE an original brand-appropriate hero visual from the brand brief and colors. " +
-        "Read IMAGE 1's structure and mood; invent the content."
-      : "\nIMAGE 1 — REFERENCE (layout/composition/zoning blueprint ONLY). " +
-        "Do NOT depict any subject, person, building, product, text, location, price, or logo visible in IMAGE 1. " +
-        "Read its structure; ignore its content."
+    "\nIMAGE 1 — REFERENCE (layout/composition/zoning blueprint ONLY). " +
+    "Do NOT depict any subject, person, building, product, text, location, price, or logo visible in IMAGE 1. " +
+    "Read its structure; ignore its content."
   );
 
   // Collect all image URLs for image_input
