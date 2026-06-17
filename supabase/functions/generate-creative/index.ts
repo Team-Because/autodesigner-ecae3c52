@@ -1940,9 +1940,13 @@ async function runGenerationPipeline(params: {
     // ── Step 1: Analyze ──
     let framework: Record<string, unknown>;
     if (existingFramework) {
+      console.log(`[gen ${generationId}] reusing valid stored framework`);
       framework = existingFramework;
       await supabase.from("generations").update({ status: "generating" }).eq("id", generationId);
     } else {
+      if (existingGeneration?.layout_guide) {
+        console.warn(`[gen ${generationId}] stored layout_guide is empty/invalid — re-analyzing`);
+      }
       await supabase.from("generations").update({ status: "analyzing" }).eq("id", generationId);
       const analyzeStart = Date.now();
       try {
@@ -1954,6 +1958,11 @@ async function runGenerationPipeline(params: {
           `AI is temporarily degraded (framework step). Please retry — no credit was used. (${err instanceof Error ? err.message : err})`,
         );
         return;
+      }
+
+      if (!isValidFramework(framework)) {
+        console.warn(`[gen ${generationId}] analyzed framework is incomplete — coercing to safe shape`);
+        framework = ensureFrameworkShape(framework);
       }
 
       await supabase
