@@ -117,28 +117,68 @@ function normalizeZoneName(name: string): string {
   return NORM_ZONE_MAP[key] || "accent";
 }
 
+function isValidFramework(fw: unknown): fw is Record<string, unknown> {
+  if (!fw || typeof fw !== "object" || Array.isArray(fw)) return false;
+  const f = fw as Record<string, any>;
+  const hasLayout =
+    f.layout && typeof f.layout === "object" && Array.isArray(f.layout.zones) && f.layout.zones.length > 0;
+  const hasText = Array.isArray(f.text_elements);
+  const hasNotes = typeof f.composition_notes === "string";
+  const hasStyle = f.style && typeof f.style === "object";
+  return Boolean(hasLayout && hasText && hasNotes && hasStyle);
+}
+
 function parseStoredFramework(value: unknown): Record<string, unknown> | null {
-  if (!value) return null;
+  if (value === null || value === undefined) return null;
   if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
     try {
-      const parsed = JSON.parse(value);
-      return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-        ? (parsed as Record<string, unknown>)
-        : null;
+      const parsed = JSON.parse(trimmed);
+      return isValidFramework(parsed) ? (parsed as Record<string, unknown>) : null;
     } catch {
       return null;
     }
   }
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
+  return isValidFramework(value) ? (value as Record<string, unknown>) : null;
 }
 
-function sanitizeFramework(fw: Record<string, unknown>): Record<string, unknown> {
-  const clean = JSON.parse(JSON.stringify(fw));
+function ensureFrameworkShape(fw: unknown): Record<string, unknown> {
+  const base: Record<string, any> =
+    fw && typeof fw === "object" && !Array.isArray(fw) ? { ...(fw as Record<string, any>) } : {};
+  if (!base.layout || typeof base.layout !== "object" || Array.isArray(base.layout)) {
+    base.layout = { orientation: "portrait", zones: [] };
+  } else {
+    base.layout = { ...base.layout };
+    if (!Array.isArray(base.layout.zones)) base.layout.zones = [];
+    if (typeof base.layout.orientation !== "string") base.layout.orientation = "portrait";
+  }
+  if (!base.style || typeof base.style !== "object" || Array.isArray(base.style)) {
+    base.style = {
+      background_type: "solid",
+      photography_style: "none",
+      overlay: "none",
+      mood: "neutral",
+      color_scheme: "brand palette",
+    };
+  }
+  if (!Array.isArray(base.text_elements)) base.text_elements = [];
+  if (typeof base.composition_notes !== "string") base.composition_notes = "";
+  return base;
+}
+
+function sanitizeFramework(fw: Record<string, unknown> | null | undefined): Record<string, unknown> {
+  // Defensive: never throw, even if the caller passes null/undefined/partial data.
+  if (!fw || typeof fw !== "object" || Array.isArray(fw)) {
+    console.warn("[sanitizeFramework] received invalid framework — using empty shell");
+    fw = {} as Record<string, unknown>;
+  }
+  const safe = ensureFrameworkShape(fw);
+  const clean = JSON.parse(JSON.stringify(safe));
 
   if (clean.layout?.zones && Array.isArray(clean.layout.zones)) {
     for (const zone of clean.layout.zones) {
+      if (!zone || typeof zone !== "object") continue;
       if (zone.name) zone.name = normalizeZoneName(zone.name);
       if (zone.description) {
         const norm = zone.name || "accent";
@@ -161,9 +201,10 @@ function sanitizeFramework(fw: Record<string, unknown>): Record<string, unknown>
 
   if (clean.text_elements && Array.isArray(clean.text_elements)) {
     for (const te of clean.text_elements) {
+      if (!te || typeof te !== "object") continue;
       delete te.content_description;
       if (te.type) {
-        const t = te.type.toLowerCase();
+        const t = String(te.type).toLowerCase();
         if (/headline|title/.test(t)) te.type = "headline";
         else if (/sub/.test(t)) te.type = "subcopy";
         else if (/cta|button/.test(t)) te.type = "cta";
