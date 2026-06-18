@@ -1521,15 +1521,81 @@ Look at the reference image AND each brand asset image. Visually evaluate which 
     return null;
   };
 
-  // Try kie.ai once, then fail fast to Lovable AI if chat is slow/degraded.
+  // Build a GPT-5.5 Responses API body equivalent to adaptBody.
+  // Reuses the same systemPrompt, userMessage, reference + asset images,
+  // and the same `creative_directive` function schema.
+  const responsesInputContent: any[] = [
+    { type: "input_text", text: userMessage },
+    { type: "input_text", text: "REFERENCE IMAGE (layout/style inspiration only — ignore all text/content in it):" },
+    { type: "input_image", image_url: referenceImageUrl },
+  ];
+  for (let i = 0; i < brandAssets.length && i < 15; i++) {
+    const asset = brandAssets[i];
+    responsesInputContent.push(
+      { type: "input_text", text: `BRAND ASSET [${i}] "${asset.label || "Unlabeled"}":` },
+      { type: "input_image", image_url: asset.image_url },
+    );
+  }
+  const adaptResponsesBody: Record<string, unknown> = {
+    model: "gpt-5-5",
+    input: [
+      { role: "developer", content: [{ type: "input_text", text: systemPrompt }] },
+      { role: "user", content: responsesInputContent },
+    ],
+    tools: [
+      {
+        type: "function",
+        name: "creative_directive",
+        description: "Output the complete creative directive mapping the reference concept to the brand.",
+        parameters: (adaptBody as any).tools[0].function.parameters,
+        strict: true,
+      },
+    ],
+    tool_choice: { type: "function", name: "creative_directive" },
+    reasoning: { effort: "high" },
+  };
+
+  const processResponsesAdapt = (data: any): CreativeDirective | null => {
+    const output = Array.isArray(data?.output) ? data.output : [];
+    // 1) Prefer a function_call item from GPT-5.5 Responses output
+    const fnCall = output.find((o: any) => o?.type === "function_call" && o?.name === "creative_directive");
+    if (fnCall?.arguments) {
+      try {
+        const directive: CreativeDirective = typeof fnCall.arguments === "string"
+          ? JSON.parse(fnCall.arguments)
+          : fnCall.arguments;
+        console.log("Adapt directive (GPT-5.5):", JSON.stringify({
+          headline: directive.headline,
+          subcopy: directive.subcopy,
+          cta: directive.cta_text,
+          assetsSelected: directive.selected_assets?.length ?? 0,
+        }));
+        return forceLogo(directive);
+      } catch (e: any) {
+        console.warn("Failed to parse function_call arguments:", e.message);
+      }
+    }
+    // 2) Fallback: parse output_text content
+    const message = output.find((o: any) => o?.type === "message");
+    const textPart = message?.content?.find?.((c: any) => c?.type === "output_text");
+    const text = textPart?.text ?? data?.output_text ?? "";
+    if (text) {
+      console.warn("Adapt (GPT-5.5): No function_call, trying content extraction...");
+      const extracted = extractDirectiveFromContent(typeof text === "string" ? text : JSON.stringify(text));
+      if (extracted) return forceLogo(extracted);
+    }
+    return null;
+  };
+
+  // Try kie.ai GPT-5.5 once, then fail fast to Lovable AI if it's slow/degraded.
   let lastAdaptError: Error | null = null;
   for (let attempt = 1; attempt <= 1; attempt++) {
     try {
       if (attempt > 1) console.log(`Adapt step retry attempt ${attempt}...`);
-      const data = await kieChat(apiKey, adaptBody, KIE_REASONING_TIMEOUT_MS);
-      const directive = processAdaptResponse(data);
+      const data = await kieResponses(apiKey, adaptResponsesBody, KIE_REASONING_TIMEOUT_MS);
+      const directive = processResponsesAdapt(data);
       if (directive) return directive;
-      throw new Error("No directive extracted from Adapt step");
+      throw new Error("No directive extracted from Adapt step (GPT-5.5)");
     } catch (err: any) {
       lastAdaptError = err;
       console.error(`Adapt attempt ${attempt} failed:`, err.message);
@@ -1537,6 +1603,7 @@ Look at the reference image AND each brand asset image. Visually evaluate which 
       if (attempt < 1) await sleep(3000);
     }
   }
+
 
   // kie.ai exhausted — try Lovable AI Gateway fallback with the same body.
   console.warn("⚠️ All kie.ai Adapt attempts failed. Trying Lovable AI Gateway fallback...");
