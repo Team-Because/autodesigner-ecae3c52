@@ -269,9 +269,10 @@ function extractExampleCopy(brief: string | null | undefined): string {
 async function kieChat(
   apiKey: string,
   body: Record<string, unknown>,
-  timeoutMs = 60000
+  timeoutMs = 60000,
+  endpoint: string = KIE_CHAT_BASE,
 ): Promise<any> {
-  const response = await fetch(KIE_CHAT_BASE, {
+  const response = await fetch(endpoint, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -283,10 +284,39 @@ async function kieChat(
 
   if (!response.ok) {
     const errText = await response.text().catch(() => "");
-    console.error(`kie.ai chat error ${response.status}:`, errText);
+    console.error(`kie.ai chat error ${response.status} (${endpoint}):`, errText);
     if (response.status === 402) throw new Error("CREDITS_EXHAUSTED");
     if (response.status === 429) throw new Error("KIE_RATE_LIMITED");
     throw new Error(`kie.ai chat failed (${response.status})`);
+  }
+
+  const data = await response.json();
+  throwIfKieApiError(data);
+  return data;
+}
+
+// ─── kie.ai Responses API helper (OpenAI Responses schema, e.g. GPT-5.5) ───
+async function kieResponses(
+  apiKey: string,
+  body: Record<string, unknown>,
+  timeoutMs = 120000,
+): Promise<any> {
+  const response = await fetch(KIE_RESPONSES_BASE, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ stream: false, ...body }),
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+
+  if (!response.ok) {
+    const errText = await response.text().catch(() => "");
+    console.error(`kie.ai responses error ${response.status}:`, errText);
+    if (response.status === 402) throw new Error("CREDITS_EXHAUSTED");
+    if (response.status === 429) throw new Error("KIE_RATE_LIMITED");
+    throw new Error(`kie.ai responses failed (${response.status})`);
   }
 
   const data = await response.json();
