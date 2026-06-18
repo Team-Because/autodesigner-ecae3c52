@@ -17,6 +17,10 @@ const FORMAT_SPECS: Record<string, { width: number; height: number; label: strin
 // ─── kie.ai API configuration ───
 const KIE_API_BASE = "https://api.kie.ai";
 const KIE_CHAT_BASE = `${KIE_API_BASE}/gemini-3-flash/v1/chat/completions`;
+// Thinking model — used for framework analysis (visual reasoning over reference)
+const KIE_THINKING_CHAT_BASE = `${KIE_API_BASE}/gemini-3-pro/v1/chat/completions`;
+// GPT 5.5 Responses API — used for the Adapt Directive reasoning stage
+const KIE_RESPONSES_BASE = `${KIE_API_BASE}/codex/v1/responses`;
 const KIE_CREATE_TASK = `${KIE_API_BASE}/api/v1/jobs/createTask`;
 const KIE_TASK_STATUS = `${KIE_API_BASE}/api/v1/jobs/recordInfo`;
 
