@@ -1051,7 +1051,7 @@ Example of RIGHT composition note: "Information strip with 3-4 short data points
           },
         ],
         tool_choice: { type: "function", function: { name: "extract_design_framework" } },
-      }, KIE_REASONING_TIMEOUT_MS);
+      }, KIE_REASONING_TIMEOUT_MS, KIE_THINKING_CHAT_BASE);
 
       // Try extracting from tool_calls first
       const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
