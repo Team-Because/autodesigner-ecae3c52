@@ -937,6 +937,9 @@ async function analyzeFramework(
       }
 
       const data = await kieChat(apiKey, {
+        model: "gemini-3-pro",
+        reasoning_effort: "high",
+        include_thoughts: false,
         messages: [
           {
             role: "system",
