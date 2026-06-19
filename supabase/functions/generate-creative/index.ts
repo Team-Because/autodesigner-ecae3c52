@@ -1737,11 +1737,8 @@ Return the result by calling creative_directive. If function calling is unavaila
     throw new Error("Lovable AI fallback returned no directive");
   } catch (fallbackErr: any) {
     console.error("Lovable AI Adapt fallback also failed:", fallbackErr.message);
-    if (fallbackErr.message === "CREDITS_EXHAUSTED") {
-      console.warn("Adapt fallback credits exhausted — continuing with local directive so generation can proceed.");
-      return forceLogo(buildLocalDirectiveFallback(brand, brandAssets, creativeMood));
-    }
-    throw new Error("ADAPT_DEGRADED: Both kie.ai and Lovable AI failed. " + (lastAdaptError?.message || fallbackErr.message));
+    console.warn("Adapt fallback unavailable — continuing with local directive so generation can proceed.");
+    return forceLogo(buildLocalDirectiveFallback(brand, brandAssets, creativeMood));
   }
 }
 
