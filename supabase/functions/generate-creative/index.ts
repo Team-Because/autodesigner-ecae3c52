@@ -1190,7 +1190,10 @@ Example of RIGHT composition note: "Information strip with 3-4 short data points
       lastError = err;
       console.error(`Framework analysis attempt ${attempt} error:`, err.message);
       
-      if (err.message === "CREDITS_EXHAUSTED" || err.message === "KIE_RATE_LIMITED") throw err;
+      if (err.message === "CREDITS_EXHAUSTED" || err.message === "KIE_RATE_LIMITED") {
+        console.warn(`kie.ai framework unavailable (${err.message}); moving to fallback provider.`);
+        break;
+      }
       
       if (attempt < maxRetries) {
         const waitMs = 3000 * attempt;
