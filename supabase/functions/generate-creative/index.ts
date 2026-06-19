@@ -1465,7 +1465,9 @@ ${brandContext}
 AVAILABLE ASSETS (select by index — you can see each one below):
 ${assetList || "No assets available — design must be text-prominent."}
 
-Look at the reference image AND each brand asset image. Visually evaluate which assets best fit the reference layout zones. Pre-decide all copy, colors, and asset selections.`;
+Look at the reference image AND each brand asset image. Visually evaluate which assets best fit the reference layout zones. Pre-decide all copy, colors, and asset selections.
+
+Return the result by calling creative_directive. If function calling is unavailable, return ONLY one valid JSON object with the exact same fields as creative_directive.`;
 
   const userContent: any[] = [
     { type: "text", text: userMessage },
@@ -1613,19 +1615,35 @@ Look at the reference image AND each brand asset image. Visually evaluate which 
         strict: true,
       },
     ],
-    tool_choice: { type: "function", name: "creative_directive" },
+    tool_choice: "auto",
     reasoning: { effort: "high" },
   };
 
   const processResponsesAdapt = (data: any): CreativeDirective | null => {
     const output = Array.isArray(data?.output) ? data.output : [];
-    // 1) Prefer a function_call item from GPT-5.5 Responses output
-    const fnCall = output.find((o: any) => o?.type === "function_call" && o?.name === "creative_directive");
-    if (fnCall?.arguments) {
+    const allObjects: any[] = [];
+    const walk = (value: any) => {
+      if (!value || typeof value !== "object") return;
+      if (Array.isArray(value)) {
+        for (const item of value) walk(item);
+        return;
+      }
+      allObjects.push(value);
+      for (const nested of Object.values(value)) walk(nested);
+    };
+    walk(data);
+
+    // 1) Prefer any function_call item from GPT-5.5 Responses output, including nested variants.
+    const fnCall = allObjects.find(
+      (o: any) =>
+        (o?.type === "function_call" || o?.type === "tool_call" || o?.type === "function") &&
+        (o?.name === "creative_directive" || o?.function?.name === "creative_directive") &&
+        (o?.arguments || o?.function?.arguments),
+    );
+    const args = fnCall?.arguments || fnCall?.function?.arguments;
+    if (args) {
       try {
-        const directive: CreativeDirective = typeof fnCall.arguments === "string"
-          ? JSON.parse(fnCall.arguments)
-          : fnCall.arguments;
+        const directive: CreativeDirective = typeof args === "string" ? JSON.parse(args) : args;
         console.log("Adapt directive (GPT-5.5):", JSON.stringify({
           headline: directive.headline,
           subcopy: directive.subcopy,
@@ -1637,15 +1655,24 @@ Look at the reference image AND each brand asset image. Visually evaluate which 
         console.warn("Failed to parse function_call arguments:", e.message);
       }
     }
-    // 2) Fallback: parse output_text content
-    const message = output.find((o: any) => o?.type === "message");
-    const textPart = message?.content?.find?.((c: any) => c?.type === "output_text");
-    const text = textPart?.text ?? data?.output_text ?? "";
+    // 2) Fallback: parse any textual content from the Responses payload.
+    const text = [
+      data?.output_text,
+      ...allObjects
+        .filter((o: any) => o?.type === "output_text" || o?.type === "text" || typeof o?.text === "string")
+        .map((o: any) => o.text),
+      ...output
+        .filter((o: any) => typeof o?.content === "string")
+        .map((o: any) => o.content),
+    ]
+      .filter((part) => typeof part === "string" && part.trim())
+      .join("\n");
     if (text) {
       console.warn("Adapt (GPT-5.5): No function_call, trying content extraction...");
       const extracted = extractDirectiveFromContent(typeof text === "string" ? text : JSON.stringify(text));
       if (extracted) return forceLogo(extracted);
     }
+    console.warn("Adapt (GPT-5.5): no directive found in response keys:", JSON.stringify(Object.keys(data || {})));
     return null;
   };
 
@@ -1710,7 +1737,10 @@ Look at the reference image AND each brand asset image. Visually evaluate which 
     throw new Error("Lovable AI fallback returned no directive");
   } catch (fallbackErr: any) {
     console.error("Lovable AI Adapt fallback also failed:", fallbackErr.message);
-    if (fallbackErr.message === "CREDITS_EXHAUSTED") throw fallbackErr;
+    if (fallbackErr.message === "CREDITS_EXHAUSTED") {
+      console.warn("Adapt fallback credits exhausted — continuing with local directive so generation can proceed.");
+      return forceLogo(buildLocalDirectiveFallback(brand, brandAssets, creativeMood));
+    }
     throw new Error("ADAPT_DEGRADED: Both kie.ai and Lovable AI failed. " + (lastAdaptError?.message || fallbackErr.message));
   }
 }
