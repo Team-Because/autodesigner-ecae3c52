@@ -341,7 +341,7 @@ async function lovableChat(
     method: "POST",
     headers: {
       "Lovable-API-Key": lovableKey,
-      "X-Lovable-AIG-SDK": "direct-fetch",
+      "X-Lovable-AIG-SDK": "vercel-ai-sdk",
       "Content-Type": "application/json",
     },
     body: JSON.stringify(payload),
