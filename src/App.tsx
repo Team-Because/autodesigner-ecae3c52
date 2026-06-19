@@ -28,6 +28,7 @@ import Pricing from "@/pages/marketing/Pricing";
 import About from "@/pages/marketing/About";
 import FAQ from "@/pages/marketing/FAQ";
 import Contact from "@/pages/marketing/Contact";
+import Trust from "@/pages/marketing/Trust";
 
 const queryClient = new QueryClient();
 
@@ -49,6 +50,7 @@ const App = () => (
                   <Route path="/about" element={<About />} />
                   <Route path="/faq" element={<FAQ />} />
                   <Route path="/contact" element={<Contact />} />
+                  <Route path="/trust" element={<Trust />} />
                 </Route>
               </Route>
 
