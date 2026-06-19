@@ -340,7 +340,8 @@ async function lovableChat(
   const response = await fetch(LOVABLE_CHAT_BASE, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${lovableKey}`,
+      "Lovable-API-Key": lovableKey,
+      "X-Lovable-AIG-SDK": "direct-fetch",
       "Content-Type": "application/json",
     },
     body: JSON.stringify(payload),
