@@ -1018,12 +1018,15 @@ async function analyzeFramework(
   aspectRatio = "16:9",
   brand?: Record<string, any> | null,
 ): Promise<Record<string, unknown>> {
-  const maxRetries = 1;
+  const maxRetries = 2;
   let lastError: Error | null = null;
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      console.log(`Framework analysis attempt ${attempt}/${maxRetries}...`);
+      const isThinkingFallback = attempt >= 2;
+      const frameworkModel = isThinkingFallback ? "gemini-3-pro" : "gemini-3-flash";
+      const frameworkEndpoint = isThinkingFallback ? KIE_THINKING_CHAT_BASE : KIE_CHAT_BASE;
+      console.log(`Framework analysis attempt ${attempt}/${maxRetries} via ${frameworkModel}...`);
 
       // For retry attempts, try converting image to base64 data URL
       let imageContent: any;
@@ -1041,7 +1044,8 @@ async function analyzeFramework(
       }
 
       const data = await kieChat(apiKey, {
-        model: "gemini-3-flash",
+        model: frameworkModel,
+        ...(isThinkingFallback ? { reasoning_effort: "high", include_thoughts: false } : {}),
         messages: [
           {
             role: "system",
@@ -1153,13 +1157,13 @@ Example of RIGHT composition note: "Information strip with 3-4 short data points
           },
         ],
         tool_choice: { type: "function", function: { name: "extract_design_framework" } },
-      }, KIE_REASONING_TIMEOUT_MS, KIE_CHAT_BASE);
+      }, KIE_REASONING_TIMEOUT_MS, frameworkEndpoint);
 
       // Try extracting from tool_calls first
       const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
       if (toolCall?.function?.arguments) {
         const framework = JSON.parse(toolCall.function.arguments);
-        console.log("✅ Framework extracted via kie.ai gemini-3-flash tool_calls");
+        console.log(`✅ Framework extracted via kie.ai ${frameworkModel} tool_calls`);
         return framework;
       }
 
