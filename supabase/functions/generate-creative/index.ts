@@ -2344,11 +2344,8 @@ async function runGenerationPipeline(params: {
       console.error("CRITICAL: Final DB update failed!", updateError);
     }
 
-    if (generationUserId) {
-      const { error: creditErr } = await supabase.rpc("deduct_credit", { _user_id: generationUserId });
-      if (creditErr) console.error("Credit deduction failed (non-blocking):", creditErr);
-      else console.log("Deducted 1 credit for user", generationUserId);
-    }
+    // Credit already consumed atomically before pipeline started (see try_consume_credit).
+    // Nothing to do here on success.
 
     console.log(`[gen ${generationId}] completed`);
   } catch (e) {
