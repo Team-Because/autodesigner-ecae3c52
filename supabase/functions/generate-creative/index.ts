@@ -1739,7 +1739,10 @@ Return the result by calling creative_directive. If function calling is unavaila
     } catch (err: any) {
       lastAdaptError = err;
       console.error(`Adapt attempt ${attempt} failed:`, err.message);
-      if (err.message === "CREDITS_EXHAUSTED" || err.message === "KIE_RATE_LIMITED") throw err;
+      if (err.message === "CREDITS_EXHAUSTED" || err.message === "KIE_RATE_LIMITED") {
+        console.warn(`kie.ai Adapt unavailable (${err.message}); moving to fallback provider.`);
+        break;
+      }
       if (attempt < 1) await sleep(3000);
     }
   }
