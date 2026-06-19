@@ -1040,9 +1040,7 @@ async function analyzeFramework(
       }
 
       const data = await kieChat(apiKey, {
-        model: "gemini-3-pro",
-        reasoning_effort: "high",
-        include_thoughts: false,
+        model: "gemini-3-flash",
         messages: [
           {
             role: "system",
@@ -1154,13 +1152,13 @@ Example of RIGHT composition note: "Information strip with 3-4 short data points
           },
         ],
         tool_choice: { type: "function", function: { name: "extract_design_framework" } },
-      }, KIE_REASONING_TIMEOUT_MS, KIE_THINKING_CHAT_BASE);
+      }, KIE_REASONING_TIMEOUT_MS, KIE_CHAT_BASE);
 
       // Try extracting from tool_calls first
       const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
       if (toolCall?.function?.arguments) {
         const framework = JSON.parse(toolCall.function.arguments);
-        console.log("Framework extracted via tool_calls successfully");
+        console.log("✅ Framework extracted via kie.ai gemini-3-flash tool_calls");
         return framework;
       }
 
