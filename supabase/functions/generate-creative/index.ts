@@ -2126,6 +2126,7 @@ async function runGenerationPipeline(params: {
 }) {
   const { brandId, referenceImageUrl, generationId, outputFormat, apiKey } = params;
   const spec = FORMAT_SPECS[outputFormat] || FORMAT_SPECS.landscape;
+  console.log(`[gen ${generationId}] pipeline started brand=${brandId} format=${outputFormat} provider=${params.usingKie ? "kie" : "lovable"}`);
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
@@ -2191,7 +2192,7 @@ async function runGenerationPipeline(params: {
       await supabase.from("generations").update({ status: "analyzing" }).eq("id", generationId);
       const analyzeStart = Date.now();
       try {
-        framework = await analyzeFramework(referenceImageUrl, apiKey, spec.aspectRatio);
+        framework = await analyzeFramework(referenceImageUrl, apiKey, spec.aspectRatio, brand);
         console.log(`[Timing] framework_analysis total=${Date.now() - analyzeStart}ms`);
       } catch (err) {
         console.error(`[Timing] framework_analysis failed total=${Date.now() - analyzeStart}ms`, err);
