@@ -2159,11 +2159,13 @@ async function runGenerationPipeline(params: {
     // Re-fetch user for credit accounting
     const { data: genRec } = await supabase
       .from("generations")
-      .select("user_id, credit_consumed")
+      .select("user_id")
       .eq("id", generationId)
       .single();
     generationUserId = genRec?.user_id ?? null;
-    creditConsumed = !!(genRec as any)?.credit_consumed;
+    // Credit was consumed atomically by the request handler before this pipeline
+    // started; on failure we refund it.
+    creditConsumed = !!generationUserId;
 
     // Fetch brand + assets in parallel
     const [brandRes, assetsRes] = await Promise.all([
