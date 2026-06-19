@@ -2140,19 +2140,30 @@ async function runGenerationPipeline(params: {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
   );
 
+  let generationUserId: string | null = null;
+  let creditConsumed = false;
+
   const markFailed = async (reason: string) => {
     console.error(`[gen ${generationId}] FAILED:`, reason);
     await supabase.from("generations").update({ status: "failed" }).eq("id", generationId);
+    // Refund the optimistically-consumed credit so failures don't burn user credit.
+    if (creditConsumed && generationUserId) {
+      const { error: refundErr } = await supabase.rpc("refund_credit", { _user_id: generationUserId });
+      if (refundErr) console.error("Credit refund failed:", refundErr);
+      else console.log("Refunded 1 credit to", generationUserId);
+      creditConsumed = false;
+    }
   };
 
   try {
     // Re-fetch user for credit accounting
     const { data: genRec } = await supabase
       .from("generations")
-      .select("user_id")
+      .select("user_id, credit_consumed")
       .eq("id", generationId)
       .single();
-    const generationUserId: string | null = genRec?.user_id ?? null;
+    generationUserId = genRec?.user_id ?? null;
+    creditConsumed = !!(genRec as any)?.credit_consumed;
 
     // Fetch brand + assets in parallel
     const [brandRes, assetsRes] = await Promise.all([
