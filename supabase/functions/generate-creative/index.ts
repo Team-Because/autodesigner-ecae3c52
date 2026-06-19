@@ -17,7 +17,7 @@ const FORMAT_SPECS: Record<string, { width: number; height: number; label: strin
 // ─── kie.ai API configuration ───
 const KIE_API_BASE = "https://api.kie.ai";
 const KIE_CHAT_BASE = `${KIE_API_BASE}/gemini-3-flash/v1/chat/completions`;
-// Thinking model — used for framework analysis (visual reasoning over reference)
+// Thinking model — secondary framework fallback if stable flash cannot parse the reference
 const KIE_THINKING_CHAT_BASE = `${KIE_API_BASE}/gemini-3-pro/v1/chat/completions`;
 // GPT 5.5 Responses API — used for the Adapt Directive reasoning stage
 const KIE_RESPONSES_BASE = `${KIE_API_BASE}/codex/v1/responses`;
@@ -340,7 +340,8 @@ async function lovableChat(
   const response = await fetch(LOVABLE_CHAT_BASE, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${lovableKey}`,
+      "Lovable-API-Key": lovableKey,
+      "X-Lovable-AIG-SDK": "vercel-ai-sdk",
       "Content-Type": "application/json",
     },
     body: JSON.stringify(payload),
@@ -971,17 +972,62 @@ function buildMinimalFramework(aspectRatio: string): Record<string, unknown> {
   };
 }
 
+function buildLocalFrameworkFallback(
+  aspectRatio: string,
+  brand?: Record<string, any> | null,
+  reason = "AI framework providers unavailable",
+): Record<string, unknown> {
+  const orientation = aspectRatio === "1:1" ? "square"
+    : aspectRatio === "9:16" || aspectRatio === "4:5" ? "portrait"
+    : "landscape";
+  const primary = brand?.primary_color || "brand primary";
+  const secondary = brand?.secondary_color || "brand accent";
+  const heroPosition = orientation === "landscape" ? "right-half" : "upper-half";
+  const textPosition = orientation === "landscape" ? "left-third" : "lower-third";
+
+  return {
+    layout: {
+      orientation,
+      zones: [
+        { name: "background", position: "full", size: "full", description: "background zone" },
+        { name: "hero_visual", position: heroPosition, size: "large", description: "primary visual / imagery zone" },
+        { name: "brand_mark", position: "top-left", size: "small", description: "brand logo placement zone" },
+        { name: "headline", position: textPosition, size: "large", description: "primary headline text zone" },
+        { name: "subcopy", position: textPosition, size: "medium", description: "supporting text zone" },
+        { name: "cta", position: "bottom-left", size: "small", description: "call-to-action button or strip" },
+      ],
+    },
+    style: {
+      background_type: "solid/panel split with safe text zones",
+      photography_style: "brand-owned hero visual",
+      overlay: "contrast-safe text panel only",
+      mood: "professional, brand-led",
+      color_scheme: `Use ${primary} as dominant brand field with ${secondary} accents and neutral readable text`,
+    },
+    text_elements: [
+      { type: "headline", position: textPosition, font_style: "bold clean sans-serif", approximate_size: "large" },
+      { type: "subcopy", position: textPosition, font_style: "regular clean sans-serif", approximate_size: "medium" },
+      { type: "cta", position: "bottom-left", font_style: "bold compact sans-serif", approximate_size: "small" },
+    ],
+    composition_notes: `Local fallback framework because ${reason}. Keep strict hierarchy: logo visible, text separated from imagery, hero asset preserved, and all copy on solid readable zones.`,
+  };
+}
+
 async function analyzeFramework(
   referenceImageUrl: string,
   apiKey: string,
-  aspectRatio = "16:9"
+  aspectRatio = "16:9",
+  brand?: Record<string, any> | null,
 ): Promise<Record<string, unknown>> {
-  const maxRetries = 1;
+  const maxRetries = 2;
   let lastError: Error | null = null;
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      console.log(`Framework analysis attempt ${attempt}/${maxRetries}...`);
+      const isThinkingFallback = attempt >= 2;
+      const frameworkModel = isThinkingFallback ? "gemini-3-pro" : "gemini-3-flash";
+      const frameworkEndpoint = isThinkingFallback ? KIE_THINKING_CHAT_BASE : KIE_CHAT_BASE;
+      console.log(`Framework analysis attempt ${attempt}/${maxRetries} via ${frameworkModel}...`);
 
       // For retry attempts, try converting image to base64 data URL
       let imageContent: any;
@@ -999,9 +1045,8 @@ async function analyzeFramework(
       }
 
       const data = await kieChat(apiKey, {
-        model: "gemini-3-pro",
-        reasoning_effort: "high",
-        include_thoughts: false,
+        model: frameworkModel,
+        ...(isThinkingFallback ? { reasoning_effort: "high", include_thoughts: false } : {}),
         messages: [
           {
             role: "system",
@@ -1113,13 +1158,13 @@ Example of RIGHT composition note: "Information strip with 3-4 short data points
           },
         ],
         tool_choice: { type: "function", function: { name: "extract_design_framework" } },
-      }, KIE_REASONING_TIMEOUT_MS, KIE_THINKING_CHAT_BASE);
+      }, KIE_REASONING_TIMEOUT_MS, frameworkEndpoint);
 
       // Try extracting from tool_calls first
       const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
       if (toolCall?.function?.arguments) {
         const framework = JSON.parse(toolCall.function.arguments);
-        console.log("Framework extracted via tool_calls successfully");
+        console.log(`✅ Framework extracted via kie.ai ${frameworkModel} tool_calls`);
         return framework;
       }
 
@@ -1146,7 +1191,10 @@ Example of RIGHT composition note: "Information strip with 3-4 short data points
       lastError = err;
       console.error(`Framework analysis attempt ${attempt} error:`, err.message);
       
-      if (err.message === "CREDITS_EXHAUSTED" || err.message === "KIE_RATE_LIMITED") throw err;
+      if (err.message === "CREDITS_EXHAUSTED" || err.message === "KIE_RATE_LIMITED") {
+        console.warn(`kie.ai framework unavailable (${err.message}); moving to fallback provider.`);
+        break;
+      }
       
       if (attempt < maxRetries) {
         const waitMs = 3000 * attempt;
@@ -1272,8 +1320,12 @@ CRITICAL RULES:
     throw new Error("Lovable AI fallback returned no framework");
   } catch (fallbackErr: any) {
     console.error("Lovable AI framework fallback also failed:", fallbackErr.message);
-    if (fallbackErr.message === "CREDITS_EXHAUSTED") throw fallbackErr;
-    throw new Error("FRAMEWORK_ANALYSIS_DEGRADED: Both kie.ai and Lovable AI failed. " + (lastError?.message || fallbackErr.message));
+    console.warn("⚠️ Using local framework fallback so generation can continue to render.");
+    return buildLocalFrameworkFallback(
+      aspectRatio,
+      brand,
+      lastError?.message || fallbackErr.message || "framework analysis failed",
+    );
   }
 }
 
@@ -1688,7 +1740,10 @@ Return the result by calling creative_directive. If function calling is unavaila
     } catch (err: any) {
       lastAdaptError = err;
       console.error(`Adapt attempt ${attempt} failed:`, err.message);
-      if (err.message === "CREDITS_EXHAUSTED" || err.message === "KIE_RATE_LIMITED") throw err;
+      if (err.message === "CREDITS_EXHAUSTED" || err.message === "KIE_RATE_LIMITED") {
+        console.warn(`kie.ai Adapt unavailable (${err.message}); moving to fallback provider.`);
+        break;
+      }
       if (attempt < 1) await sleep(3000);
     }
   }
@@ -2078,6 +2133,7 @@ async function runGenerationPipeline(params: {
 }) {
   const { brandId, referenceImageUrl, generationId, outputFormat, apiKey } = params;
   const spec = FORMAT_SPECS[outputFormat] || FORMAT_SPECS.landscape;
+  console.log(`[gen ${generationId}] pipeline started brand=${brandId} format=${outputFormat} provider=${params.usingKie ? "kie" : "lovable"}`);
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
@@ -2143,7 +2199,7 @@ async function runGenerationPipeline(params: {
       await supabase.from("generations").update({ status: "analyzing" }).eq("id", generationId);
       const analyzeStart = Date.now();
       try {
-        framework = await analyzeFramework(referenceImageUrl, apiKey, spec.aspectRatio);
+        framework = await analyzeFramework(referenceImageUrl, apiKey, spec.aspectRatio, brand);
         console.log(`[Timing] framework_analysis total=${Date.now() - analyzeStart}ms`);
       } catch (err) {
         console.error(`[Timing] framework_analysis failed total=${Date.now() - analyzeStart}ms`, err);
