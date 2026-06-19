@@ -2140,9 +2140,19 @@ async function runGenerationPipeline(params: {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
   );
 
+  let generationUserId: string | null = null;
+  let creditConsumed = false;
+
   const markFailed = async (reason: string) => {
     console.error(`[gen ${generationId}] FAILED:`, reason);
     await supabase.from("generations").update({ status: "failed" }).eq("id", generationId);
+    // Refund the optimistically-consumed credit so failures don't burn user credit.
+    if (creditConsumed && generationUserId) {
+      const { error: refundErr } = await supabase.rpc("refund_credit", { _user_id: generationUserId });
+      if (refundErr) console.error("Credit refund failed:", refundErr);
+      else console.log("Refunded 1 credit to", generationUserId);
+      creditConsumed = false;
+    }
   };
 
   try {
@@ -2152,7 +2162,10 @@ async function runGenerationPipeline(params: {
       .select("user_id")
       .eq("id", generationId)
       .single();
-    const generationUserId: string | null = genRec?.user_id ?? null;
+    generationUserId = genRec?.user_id ?? null;
+    // Credit was consumed atomically by the request handler before this pipeline
+    // started; on failure we refund it.
+    creditConsumed = !!generationUserId;
 
     // Fetch brand + assets in parallel
     const [brandRes, assetsRes] = await Promise.all([
@@ -2344,11 +2357,9 @@ async function runGenerationPipeline(params: {
       console.error("CRITICAL: Final DB update failed!", updateError);
     }
 
-    if (generationUserId) {
-      const { error: creditErr } = await supabase.rpc("deduct_credit", { _user_id: generationUserId });
-      if (creditErr) console.error("Credit deduction failed (non-blocking):", creditErr);
-      else console.log("Deducted 1 credit for user", generationUserId);
-    }
+    // Credit was atomically consumed before pipeline started; mark as committed
+    // so the failure handler doesn't refund it.
+    creditConsumed = false;
 
     console.log(`[gen ${generationId}] completed`);
   } catch (e) {
@@ -2444,13 +2455,21 @@ serve(async (req) => {
     }
 
     if (generationUserId) {
-      const { data: creditData } = await supabase
-        .from("user_credits")
-        .select("credits_remaining")
-        .eq("user_id", generationUserId)
-        .single();
-
-      if (creditData && creditData.credits_remaining <= 0) {
+      // Atomic check-and-decrement — eliminates the TOCTOU race where two
+      // concurrent requests both see credits>0 and both run.
+      const { data: consumed, error: consumeErr } = await supabase.rpc(
+        "try_consume_credit",
+        { _user_id: generationUserId }
+      );
+      if (consumeErr) {
+        console.error("try_consume_credit failed:", consumeErr);
+        await supabase.from("generations").update({ status: "failed" }).eq("id", generationId);
+        return new Response(
+          JSON.stringify({ error: "Credit check failed" }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      if (!consumed) {
         await supabase.from("generations").update({ status: "failed" }).eq("id", generationId);
         return new Response(
           JSON.stringify({ error: "No credits remaining" }),

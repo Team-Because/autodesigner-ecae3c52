@@ -368,6 +368,8 @@ export type Database = {
         Args: { _destination_brand_id: string; _source_brand_id: string }
         Returns: Json
       }
+      refund_credit: { Args: { _user_id: string }; Returns: undefined }
+      try_consume_credit: { Args: { _user_id: string }; Returns: boolean }
     }
     Enums: {
       app_role: "admin" | "user"
