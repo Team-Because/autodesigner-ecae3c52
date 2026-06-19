@@ -875,6 +875,68 @@ function extractDirectiveFromContent(content: string): CreativeDirective | null 
   return null;
 }
 
+function buildLocalDirectiveFallback(
+  brand: any,
+  brandAssets: any[],
+  creativeMood: string,
+): CreativeDirective {
+  const exampleCopy = extractExampleCopy(brand.brand_brief);
+  const firstCopyLine = exampleCopy
+    .split(/\n+/)
+    .map((line) => line.replace(/^[-•\d.)\s]+/, "").trim())
+    .find(Boolean);
+  const name = String(brand.name || "Brand").trim();
+  const words = (firstCopyLine || name).split(/\s+/).filter(Boolean);
+  const headline = words.slice(0, 8).join(" ") || name;
+  const brief = toCompactText(brand.brand_voice_rules || brand.brand_brief || "", 260);
+  const sentence = brief.split(/[.!?\n]/).map((s) => s.trim()).find((s) => s.length > 10);
+  const subcopy = (sentence || `${name} brings a clear, memorable brand message to this creative.`)
+    .split(/\s+/)
+    .slice(0, 20)
+    .join(" ");
+
+  const logoIndex = brandAssets.findIndex((a: any) => /\b(logo|logomark|brand\s*mark|brand\s*logo|symbol|monogram|emblem)\b/i.test(a.label || ""));
+  const visualIndices = brandAssets
+    .map((asset: any, index: number) => ({ asset, index }))
+    .filter(({ index, asset }) => index !== logoIndex && !/\b(logo|logomark|brand\s*mark|brand\s*logo|symbol|monogram|emblem)\b/i.test(asset.label || ""))
+    .slice(0, 3);
+
+  const selected_assets: CreativeDirective["selected_assets"] = [];
+  if (logoIndex >= 0) {
+    selected_assets.push({
+      index: logoIndex,
+      role: "logo",
+      placement: "brand mark zone with strong contrast backing if needed",
+      reason: "Required brand logo inclusion",
+    });
+  }
+  for (const { index, asset } of visualIndices) {
+    selected_assets.push({
+      index,
+      role: "hero_visual",
+      placement: "primary visual zone adapted from the reference layout",
+      reason: `Best available brand-owned visual asset: ${asset.label || "unlabeled asset"}`,
+    });
+  }
+
+  return {
+    headline,
+    subcopy,
+    cta_text: "Enquire Now",
+    selected_assets,
+    color_usage: {
+      background: brand.primary_color || "#FFFFFF",
+      headline_color: brand.secondary_color || "#111111",
+      subcopy_color: "#222222",
+      cta_background: brand.secondary_color || brand.primary_color || "#111111",
+      cta_text: "#FFFFFF",
+    },
+    concept_adaptation: `Local fallback directive using the extracted framework, brand-owned assets, and mood: ${creativeMood.split(" — ")[0]}.`,
+    logo_treatment: "Use exact uploaded logo with contrast-safe backing if the background is busy.",
+    compliance_notes: "Use only brand-provided claims and avoid copying reference-image content.",
+  };
+}
+
 // Build a minimal fallback framework from the format spec
 function buildMinimalFramework(aspectRatio: string): Record<string, unknown> {
   const orientation = aspectRatio === "1:1" ? "square" 
