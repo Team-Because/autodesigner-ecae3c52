@@ -1015,7 +1015,8 @@ function buildLocalFrameworkFallback(
 async function analyzeFramework(
   referenceImageUrl: string,
   apiKey: string,
-  aspectRatio = "16:9"
+  aspectRatio = "16:9",
+  brand?: Record<string, any> | null,
 ): Promise<Record<string, unknown>> {
   const maxRetries = 1;
   let lastError: Error | null = null;
@@ -1311,8 +1312,12 @@ CRITICAL RULES:
     throw new Error("Lovable AI fallback returned no framework");
   } catch (fallbackErr: any) {
     console.error("Lovable AI framework fallback also failed:", fallbackErr.message);
-    if (fallbackErr.message === "CREDITS_EXHAUSTED") throw fallbackErr;
-    throw new Error("FRAMEWORK_ANALYSIS_DEGRADED: Both kie.ai and Lovable AI failed. " + (lastError?.message || fallbackErr.message));
+    console.warn("⚠️ Using local framework fallback so generation can continue to render.");
+    return buildLocalFrameworkFallback(
+      aspectRatio,
+      brand,
+      lastError?.message || fallbackErr.message || "framework analysis failed",
+    );
   }
 }
 
