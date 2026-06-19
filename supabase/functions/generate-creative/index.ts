@@ -2455,13 +2455,21 @@ serve(async (req) => {
     }
 
     if (generationUserId) {
-      const { data: creditData } = await supabase
-        .from("user_credits")
-        .select("credits_remaining")
-        .eq("user_id", generationUserId)
-        .single();
-
-      if (creditData && creditData.credits_remaining <= 0) {
+      // Atomic check-and-decrement — eliminates the TOCTOU race where two
+      // concurrent requests both see credits>0 and both run.
+      const { data: consumed, error: consumeErr } = await supabase.rpc(
+        "try_consume_credit",
+        { _user_id: generationUserId }
+      );
+      if (consumeErr) {
+        console.error("try_consume_credit failed:", consumeErr);
+        await supabase.from("generations").update({ status: "failed" }).eq("id", generationId);
+        return new Response(
+          JSON.stringify({ error: "Credit check failed" }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      if (!consumed) {
         await supabase.from("generations").update({ status: "failed" }).eq("id", generationId);
         return new Response(
           JSON.stringify({ error: "No credits remaining" }),
