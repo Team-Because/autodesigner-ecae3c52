@@ -17,7 +17,7 @@ const FORMAT_SPECS: Record<string, { width: number; height: number; label: strin
 // ─── kie.ai API configuration ───
 const KIE_API_BASE = "https://api.kie.ai";
 const KIE_CHAT_BASE = `${KIE_API_BASE}/gemini-3-flash/v1/chat/completions`;
-// Thinking model — used for framework analysis (visual reasoning over reference)
+// Thinking model — secondary framework fallback if stable flash cannot parse the reference
 const KIE_THINKING_CHAT_BASE = `${KIE_API_BASE}/gemini-3-pro/v1/chat/completions`;
 // GPT 5.5 Responses API — used for the Adapt Directive reasoning stage
 const KIE_RESPONSES_BASE = `${KIE_API_BASE}/codex/v1/responses`;
@@ -968,6 +968,47 @@ function buildMinimalFramework(aspectRatio: string): Record<string, unknown> {
       { type: "cta", position: "bottom-center", font_style: "bold uppercase", approximate_size: "small" },
     ],
     composition_notes: "Standard brand layout with clear visual hierarchy, logo prominence, and balanced text placement.",
+  };
+}
+
+function buildLocalFrameworkFallback(
+  aspectRatio: string,
+  brand?: Record<string, any> | null,
+  reason = "AI framework providers unavailable",
+): Record<string, unknown> {
+  const orientation = aspectRatio === "1:1" ? "square"
+    : aspectRatio === "9:16" || aspectRatio === "4:5" ? "portrait"
+    : "landscape";
+  const primary = brand?.primary_color || "brand primary";
+  const secondary = brand?.secondary_color || "brand accent";
+  const heroPosition = orientation === "landscape" ? "right-half" : "upper-half";
+  const textPosition = orientation === "landscape" ? "left-third" : "lower-third";
+
+  return {
+    layout: {
+      orientation,
+      zones: [
+        { name: "background", position: "full", size: "full", description: "background zone" },
+        { name: "hero_visual", position: heroPosition, size: "large", description: "primary visual / imagery zone" },
+        { name: "brand_mark", position: "top-left", size: "small", description: "brand logo placement zone" },
+        { name: "headline", position: textPosition, size: "large", description: "primary headline text zone" },
+        { name: "subcopy", position: textPosition, size: "medium", description: "supporting text zone" },
+        { name: "cta", position: "bottom-left", size: "small", description: "call-to-action button or strip" },
+      ],
+    },
+    style: {
+      background_type: "solid/panel split with safe text zones",
+      photography_style: "brand-owned hero visual",
+      overlay: "contrast-safe text panel only",
+      mood: "professional, brand-led",
+      color_scheme: `Use ${primary} as dominant brand field with ${secondary} accents and neutral readable text`,
+    },
+    text_elements: [
+      { type: "headline", position: textPosition, font_style: "bold clean sans-serif", approximate_size: "large" },
+      { type: "subcopy", position: textPosition, font_style: "regular clean sans-serif", approximate_size: "medium" },
+      { type: "cta", position: "bottom-left", font_style: "bold compact sans-serif", approximate_size: "small" },
+    ],
+    composition_notes: `Local fallback framework because ${reason}. Keep strict hierarchy: logo visible, text separated from imagery, hero asset preserved, and all copy on solid readable zones.`,
   };
 }
 
