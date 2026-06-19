@@ -2357,8 +2357,9 @@ async function runGenerationPipeline(params: {
       console.error("CRITICAL: Final DB update failed!", updateError);
     }
 
-    // Credit already consumed atomically before pipeline started (see try_consume_credit).
-    // Nothing to do here on success.
+    // Credit was atomically consumed before pipeline started; mark as committed
+    // so the failure handler doesn't refund it.
+    creditConsumed = false;
 
     console.log(`[gen ${generationId}] completed`);
   } catch (e) {
