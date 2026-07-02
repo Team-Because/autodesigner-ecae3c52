@@ -1,49 +1,62 @@
-## Diagnosis
+# Plan — Improve ABSOLUTE output quality (brand-side, not system)
 
-Looking at the 7 most recent generations (all marked `failed` today, 14:39–14:52 UTC):
+You're right — the pipeline is producing what the inputs tell it to. Absolute's brief, asset library, and reference habits are what's capping quality. This plan changes only the brand setup for ABSOLUTE.
 
-- `layout_guide` is empty (length 0)
-- `kie_task_id` is null
-- `output_image_url` is empty
-- No `generate-creative` edge function logs at all
+## What I audited
 
-This means the background worker is dying at (or before) **Step 1 — Framework Analysis**, before any update to the row succeeds. The most recent change to that step was switching framework from kie.ai `gemini-3-flash` to the new `gemini-3-pro` "thinking" endpoint with `reasoning_effort: high`. The thinking endpoint is most likely:
+- Brand row: brief exists, but has structural problems (below).
+- Last 10 generations: all `4:5`, no `campaign_message` on any run, references rotate across only ~2 files, one 3D building image is being reused as both reference and hero.
+- Voice rules field duplicates the tail of the brief (redundant, dilutes prompt).
 
-- returning a response shape the parser doesn't accept, or
-- timing out beyond the 45s reasoning budget, or
-- intermittently 5xx-ing,
+## Diagnosed weaknesses
 
-…and the Lovable AI fallback is also failing (workspace credits were observed exhausted earlier today during the Adapt-stage debugging), so the function calls `markFailed("AI is temporarily degraded (framework step)")` and exits.
+1. **Brief bloat & duplication** — `## VISUAL DIRECTION` header appears twice; `brand_voice_rules` re-pastes the "Luxury, aspirational…" block already in the brief. Repeated text pushes the model toward the same phrasing every run.
+2. **Vague "match the reference" instructions** — Brief literally says "closely match the reference in typography, hierarchy, spacing." This tells the model to *copy* the reference instead of using it as a blueprint, which is the exact confusion you flagged earlier.
+3. **Reference/hero collision** — Some generations use the ABSOLUTE 3D building itself as the reference image. That guarantees the model conflates "layout blueprint" with "hero subject."
+4. **Narrow asset variety** — Same 3D building used every time → visually identical outputs even when copy changes.
+5. **No campaign context per run** — `campaign_message` empty on every recent generation, so the model has nothing to differentiate one ad from the next beyond mood rotation.
+6. **Example copy list is too specific** — 7 near-identical "Architecture / Landmark / Ownership" lines. Model keeps regurgitating this cluster.
 
-Adapt was already hardened with a deterministic local fallback in the previous turn; Framework was not, so any wobble there kills the whole run.
+## Changes to make in Brand Hub (ABSOLUTE)
 
-## Plan
+### A. Brief cleanup (BrandForm → Brand Brief)
 
-1. **Revert framework primary to the stable endpoint**
-   - Use kie.ai `gemini-3-flash` (which had a 100% success rate over the prior ~30 completed rows) as the primary for Framework Analysis.
-   - Keep `gemini-3-pro` thinking only as an optional secondary, behind the existing kieChat fallback ladder — not as the first call.
+- Remove the duplicate `## VISUAL DIRECTION` header.
+- Rewrite the Reference Alignment paragraph from "closely match" → *"Use references only as compositional blueprints (zone layout, text-to-image ratio, negative space, typography, colors)."*
+- Cut `## EXAMPLE COPY` down to **3 lines** representing distinct angles (Landmark, Scarcity, Investment) — not 7 variations of the same idea.
+- Add a `## COPY ANGLES TO ROTATE` section listing 6-8 *directions* (not finished lines): Architectural authority · Scarcity/last units · Investment thesis · Location prestige · Design provenance (Zaha) · Possession timeline · Skyline identity · Legacy ownership.
 
-2. **Add a local framework fallback (parallel to the local directive fallback)**
-   - If both kie.ai and Lovable AI fail/return invalid framework JSON, synthesize a safe minimal framework from the spec (aspect ratio, brand colors, text-zone defaults) instead of hard-failing.
-   - Pipeline then proceeds to Adapt → Render, so the user still gets a creative and only the *quality* degrades, not the whole run.
+### B. Voice rules
 
-3. **Keep GPT-5.5 for Adapt with the robust recursive parser** (already added). No change.
+- Replace `brand_voice_rules` with a short, non-overlapping ruleset only (≤400 chars): allowed registers, forbidden words ("luxury" overuse, "unparalleled", "epitome"), sentence length cap, no exclamation marks, no emoji.
 
-4. **Tighten observability**
-   - Add an explicit `console.log` at the very top of `runGenerationPipeline` (generationId + brandId) so we can confirm the worker is even starting next time logs go dark.
-   - Log which provider/endpoint produced the framework (kie-flash / kie-thinking / lovable / local-fallback).
+### C. Negative prompts (visual + content nevers)
 
-5. **Cleanup**
-   - Mark the 7 stuck-failed rows as "failed (no credit charged)" — credits were already not deducted, but the History row currently reads as a generic failure. (Cosmetic; optional.)
+- **Visual nevers:** no stock skyline photos, no generic glass towers, no lens flares, no gold gradients, no people, no cars in foreground, no text over the building's curves.
+- **Content nevers:** no discount/offer language, no "book now" urgency, no superlatives without proof, no generic "your dream office" phrasing.
 
-6. **Validation**
-   - After deploy, run one generation end-to-end and confirm: `layout_guide` populated, `kie_task_id` set, `output_image_url` populated, status `completed`.
-   - If kie thinking endpoint is genuinely down, the flash primary keeps the system working; if Lovable credits are out, the local fallback keeps it working.
+### D. Asset library
 
-## Files to change
+- Upload **3–5 additional ABSOLUTE 3D renders** at different angles (hero close-up, dusk wide, corner cantilever, lobby, top-down) so the model has variety to select from per mood.
+- Tag each asset with a distinct label (Hero-Dusk, Corner-Cantilever, Facade-Detail, etc.) so multi-asset selection produces different-looking creatives.
 
-- `supabase/functions/generate-creative/index.ts` — framework primary endpoint, add `buildLocalFrameworkFallback`, extra logging.
+### E. Reference discipline (Studio behavior, per generation)
 
-## Expected outcome
+- **Never** upload the ABSOLUTE building itself as a reference. References must be *other people's ads* whose layout structure you want to borrow.
+- Curate a small "Absolute reference library" (5–7 ads from luxury real estate / auto / watches) with strong editorial layouts and use those on rotation.
 
-New generations stop hard-failing at Step 1. Even under degraded AI conditions the pipeline reaches the image-render step, which is where the actual creative is produced.
+## What I will do when you approve
+
+Because ABSOLUTE's brand row is user-owned data, I can't rewrite it for you from plan mode. Once approved I'll switch to build mode and:
+
+1. Open ABSOLUTE in Brand Hub and apply cleanup A–C directly to the brand row (I have write access via the app).
+2. Add the visual/content nevers to `negative_prompts`.
+3. Leave asset upload (D) and reference curation (E) as a short checklist for you — I can't upload new 3D renders or ad screenshots on your behalf.
+
+## Not touching
+
+- `generate-creative` edge function, prompts, model config, fallback logic — all stay as-is.
+- Other brands' setups.
+- Credit / auth / security surfaces.
+
+Approve and I'll apply A–C directly; D–F I'll hand back as a checklist for the team.
