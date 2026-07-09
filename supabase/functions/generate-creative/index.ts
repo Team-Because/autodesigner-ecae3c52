@@ -1022,35 +1022,74 @@ async function analyzeFramework(
   const maxRetries = 2;
   let lastError: Error | null = null;
 
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      const isThinkingFallback = attempt >= 2;
-      const frameworkModel = isThinkingFallback ? "gemini-3-pro" : "gemini-3-flash";
-      const frameworkEndpoint = isThinkingFallback ? KIE_THINKING_CHAT_BASE : KIE_CHAT_BASE;
-      console.log(`Framework analysis attempt ${attempt}/${maxRetries} via ${frameworkModel}...`);
+  // Framework tool schema — shared between GPT-5.5 Responses (primary) and
+  // Gemini 3 Pro chat (fallback). Content-agnostic template extraction.
+  const frameworkToolParameters = {
+    type: "object",
+    properties: {
+      layout: {
+        type: "object",
+        properties: {
+          orientation: { type: "string", description: "landscape, portrait, or square" },
+          zones: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                name: {
+                  type: "string",
+                  enum: [
+                    "background", "brand_mark", "headline", "subcopy",
+                    "hero_visual", "supporting_visual", "info_strip",
+                    "cta", "footer", "accent",
+                  ],
+                  description: "Abstract zone type from the fixed vocabulary",
+                },
+                position: { type: "string", description: "Precise position: top-left, center, bottom-right, etc." },
+                size: { type: "string", description: "Relative size: tiny, small, medium, large, half, full" },
+                description: { type: "string", description: "DESIGN ROLE description only — NEVER mention specific content." },
+              },
+              required: ["name", "position", "size", "description"],
+              additionalProperties: false,
+            },
+          },
+        },
+        required: ["orientation", "zones"],
+        additionalProperties: false,
+      },
+      style: {
+        type: "object",
+        properties: {
+          background_type: { type: "string" },
+          photography_style: { type: "string" },
+          overlay: { type: "string" },
+          mood: { type: "string" },
+          color_scheme: { type: "string" },
+        },
+        required: ["background_type", "photography_style", "overlay", "mood", "color_scheme"],
+        additionalProperties: false,
+      },
+      text_elements: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            type: { type: "string", enum: ["headline", "subcopy", "cta", "tagline", "detail", "footer"] },
+            position: { type: "string" },
+            font_style: { type: "string" },
+            approximate_size: { type: "string" },
+          },
+          required: ["type", "position", "font_style", "approximate_size"],
+          additionalProperties: false,
+        },
+      },
+      composition_notes: { type: "string" },
+    },
+    required: ["layout", "style", "text_elements", "composition_notes"],
+    additionalProperties: false,
+  } as const;
 
-      // For retry attempts, try converting image to base64 data URL
-      let imageContent: any;
-      if (attempt >= 2 && !referenceImageUrl.startsWith("data:")) {
-        try {
-          console.log("Attempting base64 conversion for image input...");
-          const { base64 } = await downloadImageAsBase64(referenceImageUrl);
-          imageContent = { type: "image_url", image_url: { url: base64 } };
-        } catch (dlErr) {
-          console.warn("Base64 conversion failed, using URL:", dlErr);
-          imageContent = { type: "image_url", image_url: { url: referenceImageUrl } };
-        }
-      } else {
-        imageContent = { type: "image_url", image_url: { url: referenceImageUrl } };
-      }
-
-      const data = await kieChat(apiKey, {
-        model: frameworkModel,
-        ...(isThinkingFallback ? { reasoning_effort: "high", include_thoughts: false } : {}),
-        messages: [
-          {
-            role: "system",
-            content: `You are an expert visual design analyst specializing in ABSTRACT DESIGN PRINCIPLES.
+  const frameworkSystemPrompt = `You are an expert visual design analyst specializing in ABSTRACT DESIGN PRINCIPLES.
 
 CRITICAL RULES:
 1. Describe layout zones by their DESIGN ROLE — NOT by their content.
@@ -1058,146 +1097,158 @@ CRITICAL RULES:
 3. Use ONLY these zone_type categories: background, brand_mark, headline, subcopy, hero_visual, supporting_visual, info_strip, cta, footer, accent
 4. Describe SPATIAL RELATIONSHIPS, visual weight, and compositional principles — not what specific content fills each zone.
 5. For text_elements, describe the TYPOGRAPHIC STYLE (weight, case, size, contrast) — never the actual words.
-6. Think of yourself as extracting a REUSABLE TEMPLATE, not describing this specific ad.
+6. Think of yourself as extracting a REUSABLE TEMPLATE, not describing this specific ad.`;
 
-Example of WRONG zone description: "AEON & TRISL logo in white"
-Example of RIGHT zone description: "brand mark placement, white on dark, high contrast"
+  const frameworkUserText = "Extract the ABSTRACT DESIGN FRAMEWORK from this advertisement. Focus on spatial layout, visual hierarchy, typographic style, and compositional principles. Do NOT describe any specific content — only design structure.";
 
-Example of WRONG composition note: "Open house event with date and venue details"  
-Example of RIGHT composition note: "Information strip with 3-4 short data points, left-aligned"`,
-          },
-          {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: "Extract the ABSTRACT DESIGN FRAMEWORK from this advertisement. Focus on spatial layout, visual hierarchy, typographic style, and compositional principles. Do NOT describe any specific content — only design structure.",
-              },
-              imageContent,
-            ],
-          },
-        ],
-        tools: [
-          {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      // Primary (attempt 1): GPT-5.5 via kie.ai Responses API (reasoning: high).
+      // Fallback (attempt 2): Gemini 3 Pro thinking via kie.ai chat.
+      const usePrimaryGpt55 = attempt === 1;
+      const frameworkLabel = usePrimaryGpt55 ? "gpt-5-5" : "gemini-3-pro";
+      console.log(`[model] framework attempt ${attempt}/${maxRetries} via kie/${frameworkLabel}`);
+
+      if (usePrimaryGpt55) {
+        // GPT-5.5 Responses API path — accepts image via input_image block.
+        // For the primary, attempt base64 conversion once to sidestep transient URL fetch issues.
+        let imageUrlForResponses = referenceImageUrl;
+        if (!referenceImageUrl.startsWith("data:")) {
+          try {
+            const { base64 } = await downloadImageAsBase64(referenceImageUrl);
+            imageUrlForResponses = base64;
+          } catch (dlErr) {
+            console.warn("[framework gpt-5-5] base64 conversion failed, using URL:", (dlErr as Error).message);
+          }
+        }
+
+        const data = await kieResponses(apiKey, {
+          model: "gpt-5-5",
+          input: [
+            { role: "developer", content: [{ type: "input_text", text: frameworkSystemPrompt }] },
+            {
+              role: "user",
+              content: [
+                { type: "input_text", text: frameworkUserText },
+                { type: "input_image", image_url: imageUrlForResponses },
+              ],
+            },
+          ],
+          tools: [{
+            type: "function",
+            name: "extract_design_framework",
+            description: "Extract a reusable, content-agnostic design framework from the reference image.",
+            parameters: frameworkToolParameters,
+            strict: true,
+          }],
+          tool_choice: "auto",
+          reasoning: { effort: "high" },
+        }, KIE_REASONING_TIMEOUT_MS);
+
+        // Walk output for a function_call named extract_design_framework.
+        const allObjects: any[] = [];
+        const walk = (v: any) => {
+          if (!v || typeof v !== "object") return;
+          if (Array.isArray(v)) { for (const it of v) walk(it); return; }
+          allObjects.push(v);
+          for (const nested of Object.values(v)) walk(nested);
+        };
+        walk(data);
+        const fnCall = allObjects.find(
+          (o: any) =>
+            (o?.type === "function_call" || o?.type === "tool_call" || o?.type === "function") &&
+            (o?.name === "extract_design_framework" || o?.function?.name === "extract_design_framework") &&
+            (o?.arguments || o?.function?.arguments),
+        );
+        const args = fnCall?.arguments || fnCall?.function?.arguments;
+        if (args) {
+          const framework = typeof args === "string" ? JSON.parse(args) : args;
+          console.log(`✅ Framework extracted via kie.ai gpt-5-5 (Responses)`);
+          return framework;
+        }
+        // Content fallback
+        const textParts: string[] = [];
+        if (typeof data?.output_text === "string") textParts.push(data.output_text);
+        for (const o of allObjects) {
+          if ((o?.type === "output_text" || o?.type === "text") && typeof o?.text === "string") textParts.push(o.text);
+        }
+        const text = textParts.join("\n").trim();
+        if (text) {
+          const extracted = extractFrameworkFromContent(text);
+          if (extracted) {
+            console.log("✅ Framework extracted via kie.ai gpt-5-5 (content fallback)");
+            return extracted;
+          }
+        }
+        console.error(`Attempt ${attempt} (gpt-5-5): no framework in Responses payload; keys=${JSON.stringify(Object.keys(data || {}))}`);
+        lastError = new Error("No framework extracted from GPT-5.5 response");
+      } else {
+        // Fallback attempt: Gemini 3 Pro thinking via chat completions.
+        let imageContent: any;
+        if (!referenceImageUrl.startsWith("data:")) {
+          try {
+            const { base64 } = await downloadImageAsBase64(referenceImageUrl);
+            imageContent = { type: "image_url", image_url: { url: base64 } };
+          } catch (dlErr) {
+            console.warn("Base64 conversion failed, using URL:", (dlErr as Error).message);
+            imageContent = { type: "image_url", image_url: { url: referenceImageUrl } };
+          }
+        } else {
+          imageContent = { type: "image_url", image_url: { url: referenceImageUrl } };
+        }
+
+        const data = await kieChat(apiKey, {
+          model: "gemini-3-pro",
+          reasoning_effort: "high",
+          include_thoughts: false,
+          messages: [
+            { role: "system", content: frameworkSystemPrompt },
+            {
+              role: "user",
+              content: [
+                { type: "text", text: frameworkUserText },
+                imageContent,
+              ],
+            },
+          ],
+          tools: [{
             type: "function",
             function: {
               name: "extract_design_framework",
-              description:
-                "Extract a reusable, content-agnostic design framework from the reference image.",
-              parameters: {
-                type: "object",
-                properties: {
-                  layout: {
-                    type: "object",
-                    properties: {
-                      orientation: {
-                        type: "string",
-                        description: "landscape, portrait, or square",
-                      },
-                      zones: {
-                        type: "array",
-                        items: {
-                          type: "object",
-                          properties: {
-                            name: {
-                              type: "string",
-                              enum: [
-                                "background", "brand_mark", "headline", "subcopy",
-                                "hero_visual", "supporting_visual", "info_strip",
-                                "cta", "footer", "accent",
-                              ],
-                              description: "Abstract zone type from the fixed vocabulary",
-                            },
-                            position: { type: "string", description: "Precise position: top-left, center, bottom-right, etc." },
-                            size: { type: "string", description: "Relative size: tiny, small, medium, large, half, full" },
-                            description: { type: "string", description: "DESIGN ROLE description only — NEVER mention specific content." },
-                          },
-                          required: ["name", "position", "size", "description"],
-                          additionalProperties: false,
-                        },
-                      },
-                    },
-                    required: ["orientation", "zones"],
-                    additionalProperties: false,
-                  },
-                  style: {
-                    type: "object",
-                    properties: {
-                      background_type: { type: "string", description: "solid, gradient, photo, pattern, split, etc." },
-                      photography_style: { type: "string", description: "lifestyle, product-shot, abstract, illustration, architectural, none" },
-                      overlay: { type: "string", description: "Overlay treatment: none, dark-gradient, light-gradient, color-wash, etc." },
-                      mood: { type: "string", description: "Overall mood: professional, playful, luxurious, energetic, minimalist, etc." },
-                      color_scheme: { type: "string", description: "Color relationships — dominant/accent/neutral distribution, NOT specific brand colors" },
-                    },
-                    required: ["background_type", "photography_style", "overlay", "mood", "color_scheme"],
-                    additionalProperties: false,
-                  },
-                  text_elements: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      properties: {
-                        type: { type: "string", enum: ["headline", "subcopy", "cta", "tagline", "detail", "footer"] },
-                        position: { type: "string" },
-                        font_style: { type: "string", description: "bold, light, italic, uppercase, condensed, serif, sans-serif, display, etc." },
-                        approximate_size: { type: "string", description: "small, medium, large, extra-large" },
-                      },
-                      required: ["type", "position", "font_style", "approximate_size"],
-                      additionalProperties: false,
-                    },
-                  },
-                  composition_notes: {
-                    type: "string",
-                    description: "Abstract design observations about symmetry, focal point, whitespace, visual flow, contrast strategy. NEVER mention specific content.",
-                  },
-                },
-                required: ["layout", "style", "text_elements", "composition_notes"],
-                additionalProperties: false,
-              },
+              description: "Extract a reusable, content-agnostic design framework from the reference image.",
+              parameters: frameworkToolParameters,
             },
-          },
-        ],
-        tool_choice: { type: "function", function: { name: "extract_design_framework" } },
-      }, KIE_REASONING_TIMEOUT_MS, frameworkEndpoint);
+          }],
+          tool_choice: { type: "function", function: { name: "extract_design_framework" } },
+        }, KIE_REASONING_TIMEOUT_MS, KIE_THINKING_CHAT_BASE);
 
-      // Try extracting from tool_calls first
-      const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
-      if (toolCall?.function?.arguments) {
-        const framework = JSON.parse(toolCall.function.arguments);
-        console.log(`✅ Framework extracted via kie.ai ${frameworkModel} tool_calls`);
-        return framework;
+        const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
+        if (toolCall?.function?.arguments) {
+          const framework = JSON.parse(toolCall.function.arguments);
+          console.log("✅ Framework extracted via kie.ai gemini-3-pro tool_calls");
+          return framework;
+        }
+        const messageContent = data.choices?.[0]?.message?.content;
+        if (messageContent) {
+          const extracted = extractFrameworkFromContent(
+            typeof messageContent === "string" ? messageContent : JSON.stringify(messageContent),
+          );
+          if (extracted) return extracted;
+        }
+        console.error(`Attempt ${attempt} (gemini-3-pro): No framework in response.`);
+        lastError = new Error("No framework extracted from reference image");
       }
-
-      // Fallback: try extracting from message content
-      const messageContent = data.choices?.[0]?.message?.content;
-      if (messageContent) {
-        console.warn("No tool_calls in response, trying content extraction fallback...");
-        console.log("Response content preview:", typeof messageContent === "string" ? messageContent.slice(0, 200) : JSON.stringify(messageContent).slice(0, 200));
-        const extracted = extractFrameworkFromContent(
-          typeof messageContent === "string" ? messageContent : JSON.stringify(messageContent)
-        );
-        if (extracted) return extracted;
-      }
-
-      // Log the actual response structure for debugging
-      console.error(`Attempt ${attempt}: No framework in response. Keys: ${JSON.stringify(Object.keys(data || {}))}`);
-      if (data.choices?.[0]?.message) {
-        const msg = data.choices[0].message;
-        console.error(`Message keys: ${JSON.stringify(Object.keys(msg))}, role: ${msg.role}, has content: ${!!msg.content}, has tool_calls: ${!!msg.tool_calls}`);
-      }
-      
-      lastError = new Error("No framework extracted from reference image");
     } catch (err: any) {
       lastError = err;
       console.error(`Framework analysis attempt ${attempt} error:`, err.message);
-      
+
       if (err.message === "CREDITS_EXHAUSTED" || err.message === "KIE_RATE_LIMITED") {
         console.warn(`kie.ai framework unavailable (${err.message}); moving to fallback provider.`);
         break;
       }
-      
+
       if (attempt < maxRetries) {
-        const waitMs = 3000 * attempt;
+        const waitMs = 2000;
         console.log(`Waiting ${waitMs}ms before retry...`);
         await sleep(waitMs);
       }
