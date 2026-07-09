@@ -1,62 +1,47 @@
-# Plan — Improve ABSOLUTE output quality (brand-side, not system)
+# Switch Primary Models to GPT-5.5 + GPT Image 2
 
-You're right — the pipeline is producing what the inputs tell it to. Absolute's brief, asset library, and reference habits are what's capping quality. This plan changes only the brand setup for ABSOLUTE.
+## Goal
+Move the pipeline's primary models to the ones you asked for, while keeping today's fallback chain (Lovable AI Gateway) intact so nothing gets more fragile.
 
-## What I audited
+## New model plan
 
-- Brand row: brief exists, but has structural problems (below).
-- Last 10 generations: all `4:5`, no `campaign_message` on any run, references rotate across only ~2 files, one 3D building image is being reused as both reference and hero.
-- Voice rules field duplicates the tail of the brief (redundant, dilutes prompt).
+| Stage | Primary (new) | Fallback 1 | Fallback 2 |
+|---|---|---|---|
+| **1. Framework Analysis** | **GPT-5.5** via kie.ai `/codex/v1/responses` (`gpt-5-5`, reasoning: high) | Gemini 3 Pro thinking via kie.ai (current primary) | Lovable AI `google/gemini-2.5-pro` |
+| **2. Adapt Directive (mood/style/copy)** | **GPT-5.5** via kie.ai Responses API (already wired) | Lovable AI `openai/gpt-5.5` (structured output) | Local safety directive (already exists) |
+| **3. Image Render** | **GPT Image 2** via kie.ai (`/gpt-image/…` job endpoint) | Nano Banana Pro via kie.ai (current primary → demoted) | Lovable AI `google/gemini-3.1-flash-image` |
 
-## Diagnosed weaknesses
+Reasoning stays "thinking" everywhere; only the model changes.
 
-1. **Brief bloat & duplication** — `## VISUAL DIRECTION` header appears twice; `brand_voice_rules` re-pastes the "Luxury, aspirational…" block already in the brief. Repeated text pushes the model toward the same phrasing every run.
-2. **Vague "match the reference" instructions** — Brief literally says "closely match the reference in typography, hierarchy, spacing." This tells the model to *copy* the reference instead of using it as a blueprint, which is the exact confusion you flagged earlier.
-3. **Reference/hero collision** — Some generations use the ABSOLUTE 3D building itself as the reference image. That guarantees the model conflates "layout blueprint" with "hero subject."
-4. **Narrow asset variety** — Same 3D building used every time → visually identical outputs even when copy changes.
-5. **No campaign context per run** — `campaign_message` empty on every recent generation, so the model has nothing to differentiate one ad from the next beyond mood rotation.
-6. **Example copy list is too specific** — 7 near-identical "Architecture / Landmark / Ownership" lines. Model keeps regurgitating this cluster.
+## What actually changes in code (`supabase/functions/generate-creative/index.ts`)
 
-## Changes to make in Brand Hub (ABSOLUTE)
+1. **`analyzeFramework`**
+   - Swap the current kie chat call (`gemini-3-pro/v1/chat/completions`) for a `kieResponses` call to `gpt-5-5` on `/codex/v1/responses`, reusing the existing `framework_analysis` tool schema converted to the Responses `tools` shape (already done for Adapt, same pattern).
+   - Attach the reference image as an `input_image` block (Responses supports vision).
+   - On timeout/parse-fail → fall through to existing Gemini 3 Pro thinking call → then Lovable AI fallback.
 
-### A. Brief cleanup (BrandForm → Brand Brief)
+2. **`adaptDirective`**
+   - Already on GPT-5.5. No change beyond confirming timeouts (keep the shortened values from the last fix).
 
-- Remove the duplicate `## VISUAL DIRECTION` header.
-- Rewrite the Reference Alignment paragraph from "closely match" → *"Use references only as compositional blueprints (zone layout, text-to-image ratio, negative space, typography, colors)."*
-- Cut `## EXAMPLE COPY` down to **3 lines** representing distinct angles (Landmark, Scarcity, Investment) — not 7 variations of the same idea.
-- Add a `## COPY ANGLES TO ROTATE` section listing 6-8 *directions* (not finished lines): Architectural authority · Scarcity/last units · Investment thesis · Location prestige · Design provenance (Zaha) · Possession timeline · Skyline identity · Legacy ownership.
+3. **Image render (`renderNanoBanana` → rename `renderImage`)**
+   - New primary path: create kie GPT Image 2 job (`/gpt-image/generate` or the current kie image job endpoint — will confirm from the kie docs when building), poll same way as Nano Banana today.
+   - Reuse the identical prompt, reference-image, and logo-image payload builder — no prompt changes.
+   - On failure → fall back to Nano Banana Pro (existing code path, unchanged) → then Lovable AI image fallback.
 
-### B. Voice rules
+4. **Logging**
+   - Extend the existing `[Timing]` and `[gen …]` logs to record which model actually served each stage, so the next time quality drifts we can tell at a glance whether the primary or a fallback served it.
 
-- Replace `brand_voice_rules` with a short, non-overlapping ruleset only (≤400 chars): allowed registers, forbidden words ("luxury" overuse, "unparalleled", "epitome"), sentence length cap, no exclamation marks, no emoji.
+## What does NOT change
+- Prompts, framework JSON schema, adapt tool schema, asset ordering (Image 1 = reference, Image 2 = logo), negative prompts, mood rotation, credit deduction, refund logic, RLS, brand-autofill, Studio UI.
+- No new secrets — `KIE_API_KEY` and `LOVABLE_API_KEY` already cover everything.
+- No DB migrations.
 
-### C. Negative prompts (visual + content nevers)
+## Verification before I say "done"
+- Deploy the function.
+- Run one live generation for **Absolute** and one for **Vaikunth** via the studio.
+- Read `[Timing]` + `[model]` logs to confirm the primaries served both runs end-to-end, and the output images render.
+- If either primary 4xx's, I fix the request body against the kie doc (per model, not carry-over) and rerun before closing out.
 
-- **Visual nevers:** no stock skyline photos, no generic glass towers, no lens flares, no gold gradients, no people, no cars in foreground, no text over the building's curves.
-- **Content nevers:** no discount/offer language, no "book now" urgency, no superlatives without proof, no generic "your dream office" phrasing.
-
-### D. Asset library
-
-- Upload **3–5 additional ABSOLUTE 3D renders** at different angles (hero close-up, dusk wide, corner cantilever, lobby, top-down) so the model has variety to select from per mood.
-- Tag each asset with a distinct label (Hero-Dusk, Corner-Cantilever, Facade-Detail, etc.) so multi-asset selection produces different-looking creatives.
-
-### E. Reference discipline (Studio behavior, per generation)
-
-- **Never** upload the ABSOLUTE building itself as a reference. References must be *other people's ads* whose layout structure you want to borrow.
-- Curate a small "Absolute reference library" (5–7 ads from luxury real estate / auto / watches) with strong editorial layouts and use those on rotation.
-
-## What I will do when you approve
-
-Because ABSOLUTE's brand row is user-owned data, I can't rewrite it for you from plan mode. Once approved I'll switch to build mode and:
-
-1. Open ABSOLUTE in Brand Hub and apply cleanup A–C directly to the brand row (I have write access via the app).
-2. Add the visual/content nevers to `negative_prompts`.
-3. Leave asset upload (D) and reference curation (E) as a short checklist for you — I can't upload new 3D renders or ad screenshots on your behalf.
-
-## Not touching
-
-- `generate-creative` edge function, prompts, model config, fallback logic — all stay as-is.
-- Other brands' setups.
-- Credit / auth / security surfaces.
-
-Approve and I'll apply A–C directly; D–F I'll hand back as a checklist for the team.
+## Risk / rollback
+- Single-file change. If GPT Image 2 quality disappoints, flipping the primary back to Nano Banana Pro is a one-line swap in `renderImage`.
+- Fallbacks stay identical to today, so worst case behavior = today's behavior.
