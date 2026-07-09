@@ -2116,7 +2116,7 @@ async function generateCreative(
       continue;
     }
     for (let attempt = 1; attempt <= 2; attempt++) {
-      console.log(`Using model: ${label} @ ${resolution} (attempt ${attempt}/2)`);
+      console.log(`[model] image render via kie/${model} @ ${resolution} (attempt ${attempt}/2)`);
 
       try {
         const resultUrl = await kieGenerateImage(
