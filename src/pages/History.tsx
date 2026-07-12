@@ -1,9 +1,9 @@
-import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useMemo, useEffect, useRef } from "react";
+import { useQuery, useInfiniteQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { format } from "date-fns";
-import { CalendarIcon, ImageOff, Download, ExternalLink, Eye, Search } from "lucide-react";
+import { CalendarIcon, ImageOff, Download, ExternalLink, Eye, Search, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -30,6 +30,8 @@ import {
 } from "@/components/ui/popover";
 import { Card, CardContent } from "@/components/ui/card";
 
+const PAGE_SIZE = 60;
+
 export default function History() {
   const { user } = useAuth();
   const [brandFilter, setBrandFilter] = useState("all");
@@ -37,10 +39,8 @@ export default function History() {
   const [dateTo, setDateTo] = useState<Date | undefined>();
   const [selectedGeneration, setSelectedGeneration] = useState<any | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
 
-  // Load ALL brands (including archived) so generations from archived brands
-  // still display their brand name. The filter dropdown also shows archived
-  // brands — they get a small "(archived)" suffix for clarity.
   const { data: brands = [] } = useQuery({
     queryKey: ["brands-with-archived", user?.id],
     queryFn: async () => {
@@ -50,46 +50,76 @@ export default function History() {
     enabled: !!user,
   });
 
-  const { data: generations = [], isLoading } = useQuery({
-    queryKey: ["generations", user?.id],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("generations")
-        .select("*")
-        .order("created_at", { ascending: false });
-      return data ?? [];
-    },
+  // Server-side filters — narrow the query itself so filtering searches the
+  // full history, not just already-loaded pages.
+  const dateFromIso = dateFrom ? dateFrom.toISOString() : null;
+  const dateToIso = useMemo(() => {
+    if (!dateTo) return null;
+    const end = new Date(dateTo);
+    end.setHours(23, 59, 59, 999);
+    return end.toISOString();
+  }, [dateTo]);
+
+  const {
+    data,
+    isLoading,
+    isFetchingNextPage,
+    fetchNextPage,
+    hasNextPage,
+  } = useInfiniteQuery({
+    queryKey: ["generations", user?.id, brandFilter, dateFromIso, dateToIso],
     enabled: !!user,
+    initialPageParam: 0,
+    queryFn: async ({ pageParam }) => {
+      const from = pageParam as number;
+      const to = from + PAGE_SIZE - 1;
+      let q = supabase
+        .from("generations")
+        .select("*", { count: "exact" })
+        .eq("status", "completed")
+        .order("created_at", { ascending: false })
+        .range(from, to);
+      if (brandFilter !== "all") q = q.eq("brand_id", brandFilter);
+      if (dateFromIso) q = q.gte("created_at", dateFromIso);
+      if (dateToIso) q = q.lte("created_at", dateToIso);
+      const { data, count } = await q;
+      return { rows: data ?? [], count: count ?? 0, nextOffset: from + PAGE_SIZE };
+    },
+    getNextPageParam: (lastPage) =>
+      lastPage.rows.length === PAGE_SIZE ? lastPage.nextOffset : undefined,
   });
+
+  const generations = useMemo(
+    () => (data?.pages ?? []).flatMap((p) => p.rows),
+    [data]
+  );
+  const totalCount = data?.pages?.[0]?.count ?? 0;
 
   const brandMap = useMemo(
     () => Object.fromEntries(brands.map((b) => [b.id, b.name])),
     [brands]
   );
 
-  // Only show completed generations (hide failed)
+  // Only search runs client-side (narrow text filter on loaded pages).
   const filtered = useMemo(() => {
-    return generations.filter((g) => {
-      // Hide failed and stale processing
-      if (g.status === "failed") return false;
-      if ((g.status === "processing" || g.status === "analyzing" || g.status === "generating") &&
-        Date.now() - new Date(g.created_at).getTime() > 10 * 60 * 1000) return false;
-      if (g.status !== "completed") return false;
+    if (!searchQuery) return generations;
+    const q = searchQuery.toLowerCase();
+    return generations.filter((g) => (brandMap[g.brand_id] || "").toLowerCase().includes(q));
+  }, [generations, searchQuery, brandMap]);
 
-      if (brandFilter !== "all" && g.brand_id !== brandFilter) return false;
-      if (searchQuery) {
-        const brandName = brandMap[g.brand_id] || "";
-        if (!brandName.toLowerCase().includes(searchQuery.toLowerCase())) return false;
-      }
-      if (dateFrom && new Date(g.created_at) < dateFrom) return false;
-      if (dateTo) {
-        const end = new Date(dateTo);
-        end.setHours(23, 59, 59, 999);
-        if (new Date(g.created_at) > end) return false;
-      }
-      return true;
-    });
-  }, [generations, brandFilter, dateFrom, dateTo, searchQuery, brandMap]);
+  // Infinite scroll sentinel
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || !hasNextPage) return;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && !isFetchingNextPage) fetchNextPage();
+      },
+      { rootMargin: "400px" }
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   const handleDownload = async (url: string, filename: string) => {
     try {
@@ -113,9 +143,6 @@ export default function History() {
     return typeof g.copywriting === "string" ? JSON.parse(g.copywriting) : g.copywriting;
   };
 
-  // Build a fast, low-res thumbnail URL via Supabase Storage's image
-  // transformation endpoint. Falls back to the original URL if not a
-  // Supabase storage object URL.
   const getThumbUrl = (url: string, width = 480) => {
     if (!url) return url;
     if (url.includes("/storage/v1/object/")) {
@@ -131,13 +158,13 @@ export default function History() {
     if (ar === "9:16") return "aspect-[9/16]";
     if (ar === "4:5") return "aspect-[4/5]";
     if (ar === "16:9") return "aspect-video";
-    return "aspect-[4/3]"; // fallback for old generations
+    return "aspect-[4/3]";
   };
 
   return (
     <div className="p-6 lg:p-8 space-y-6 max-w-7xl mx-auto">
       <h1 className="text-2xl font-display font-bold text-foreground">
-        Generation History
+        Generation History{totalCount ? ` (${totalCount.toLocaleString()})` : ""}
       </h1>
 
       {/* Filters */}
@@ -216,70 +243,81 @@ export default function History() {
           <p className="text-sm">No completed generations found.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-          {filtered.map((g) => {
-            const cw = getCopywriting(g);
-            return (
-              <Card
-                key={g.id}
-                className="overflow-hidden hover:shadow-lg transition-all cursor-pointer group"
-                onClick={() => setSelectedGeneration(g)}
-              >
-                {/* Output image with reference overlay */}
-                <div className={`relative ${getAspectClass(g)} bg-muted overflow-hidden`}>
-                  {g.output_image_url ? (
-                    <>
-                      <img
-                        src={getThumbUrl(g.output_image_url, 480)}
-                        alt="Generated creative"
-                        className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
-                        loading="lazy"
-                        decoding="async"
-                      />
-                      <div className="absolute inset-0 bg-foreground/0 group-hover:bg-foreground/10 transition-colors flex items-center justify-center">
-                        <Eye className="h-8 w-8 text-card opacity-0 group-hover:opacity-100 transition-opacity drop-shadow-lg" />
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+            {filtered.map((g) => {
+              const cw = getCopywriting(g);
+              return (
+                <Card
+                  key={g.id}
+                  className="overflow-hidden hover:shadow-lg transition-all cursor-pointer group"
+                  onClick={() => setSelectedGeneration(g)}
+                >
+                  <div className={`relative ${getAspectClass(g)} bg-muted overflow-hidden`}>
+                    {g.output_image_url ? (
+                      <>
+                        <img
+                          src={getThumbUrl(g.output_image_url, 480)}
+                          alt="Generated creative"
+                          className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
+                          loading="lazy"
+                          decoding="async"
+                        />
+                        <div className="absolute inset-0 bg-foreground/0 group-hover:bg-foreground/10 transition-colors flex items-center justify-center">
+                          <Eye className="h-8 w-8 text-card opacity-0 group-hover:opacity-100 transition-opacity drop-shadow-lg" />
+                        </div>
+                      </>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
+                        <ImageOff className="h-8 w-8 mb-2 opacity-40" />
+                        <p className="text-xs">No image</p>
                       </div>
-                    </>
-                  ) : (
-                    <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
-                      <ImageOff className="h-8 w-8 mb-2 opacity-40" />
-                      <p className="text-xs">No image</p>
-                    </div>
-                  )}
-                  {/* Reference image thumbnail */}
-                  {g.reference_image_url && g.reference_image_url !== "" && (
-                    <div className="absolute bottom-2 left-2 h-12 w-12 rounded-lg border-2 border-card shadow-md overflow-hidden bg-muted">
-                      <img
-                        src={getThumbUrl(g.reference_image_url, 96)}
-                        alt="Reference"
-                        className="h-full w-full object-cover"
-                        loading="lazy"
-                        decoding="async"
-                      />
-                    </div>
-                  )}
-                </div>
+                    )}
+                    {g.reference_image_url && g.reference_image_url !== "" && (
+                      <div className="absolute bottom-2 left-2 h-12 w-12 rounded-lg border-2 border-card shadow-md overflow-hidden bg-muted">
+                        <img
+                          src={getThumbUrl(g.reference_image_url, 96)}
+                          alt="Reference"
+                          className="h-full w-full object-cover"
+                          loading="lazy"
+                          decoding="async"
+                        />
+                      </div>
+                    )}
+                  </div>
 
-                <CardContent className="p-4 space-y-1">
-                  <p className="text-sm font-medium text-foreground truncate">
-                    {brandMap[g.brand_id] ?? "Unknown brand"}
-                  </p>
-                  {g.requested_aspect_ratio && (
-                    <Badge variant="outline" className="text-[10px] shrink-0">
-                      {g.requested_aspect_ratio}
-                    </Badge>
-                  )}
-                  {cw?.caption && (
-                    <p className="text-xs text-muted-foreground line-clamp-1">{cw.caption}</p>
-                  )}
-                  <p className="text-xs text-muted-foreground">
-                    {format(new Date(g.created_at), "MMM d, yyyy · h:mm a")}
-                  </p>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
+                  <CardContent className="p-4 space-y-1">
+                    <p className="text-sm font-medium text-foreground truncate">
+                      {brandMap[g.brand_id] ?? "Unknown brand"}
+                    </p>
+                    {g.requested_aspect_ratio && (
+                      <Badge variant="outline" className="text-[10px] shrink-0">
+                        {g.requested_aspect_ratio}
+                      </Badge>
+                    )}
+                    {cw?.caption && (
+                      <p className="text-xs text-muted-foreground line-clamp-1">{cw.caption}</p>
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                      {format(new Date(g.created_at), "MMM d, yyyy · h:mm a")}
+                    </p>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+
+          {/* Infinite scroll sentinel + status */}
+          <div ref={sentinelRef} className="flex items-center justify-center py-6 text-xs text-muted-foreground">
+            {isFetchingNextPage ? (
+              <span className="inline-flex items-center gap-2"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading more…</span>
+            ) : hasNextPage ? (
+              <Button variant="ghost" size="sm" onClick={() => fetchNextPage()}>Load more</Button>
+            ) : (
+              <span>Showing all {generations.length.toLocaleString()} of {totalCount.toLocaleString()}</span>
+            )}
+          </div>
+        </>
       )}
 
       {/* Detail dialog */}
@@ -292,14 +330,12 @@ export default function History() {
             const cw = getCopywriting(selectedGeneration);
             return (
               <div className="space-y-5">
-                {/* Output image */}
                 {selectedGeneration.output_image_url && (
                   <div className="rounded-lg overflow-hidden bg-muted">
                     <img src={selectedGeneration.output_image_url} alt="Generated creative" className="w-full rounded-lg" />
                   </div>
                 )}
 
-                {/* Reference vs Output comparison */}
                 {selectedGeneration.reference_image_url && selectedGeneration.reference_image_url !== "" && (
                   <div>
                     <p className="text-xs font-medium text-muted-foreground mb-2">Reference Image</p>
@@ -309,7 +345,6 @@ export default function History() {
                   </div>
                 )}
 
-                {/* Meta info */}
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
                   <div>
                     <p className="text-muted-foreground text-xs mb-0.5">Brand</p>
@@ -340,7 +375,6 @@ export default function History() {
                   </div>
                 )}
 
-                {/* QC Advisory (if present) */}
                 {cw?.qc_score != null && (
                   <div className="space-y-2">
                     <div className="flex items-center gap-2">

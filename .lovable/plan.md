@@ -1,47 +1,54 @@
-# Switch Primary Models to GPT-5.5 + GPT Image 2
+## Problem
 
-## Goal
-Move the pipeline's primary models to the ones you asked for, while keeping today's fallback chain (Lovable AI Gateway) intact so nothing gets more fragile.
+History page shows only the newest ~1,000 generations. Older ones (from before ~June) appear "missing," but they're all safe:
+- 3,597 completed generations exist in the database going back to March 12
+- Every image file is intact in Supabase Storage and serves correctly
+- Nothing has ever deleted a row or a file
 
-## New model plan
+The root cause is that `src/pages/History.tsx` uses a single unbounded `SELECT *` on `generations`, and Supabase's Data API silently caps responses at 1,000 rows. So the client never receives the older 2,500+ rows.
 
-| Stage | Primary (new) | Fallback 1 | Fallback 2 |
-|---|---|---|---|
-| **1. Framework Analysis** | **GPT-5.5** via kie.ai `/codex/v1/responses` (`gpt-5-5`, reasoning: high) | Gemini 3 Pro thinking via kie.ai (current primary) | Lovable AI `google/gemini-2.5-pro` |
-| **2. Adapt Directive (mood/style/copy)** | **GPT-5.5** via kie.ai Responses API (already wired) | Lovable AI `openai/gpt-5.5` (structured output) | Local safety directive (already exists) |
-| **3. Image Render** | **GPT Image 2** via kie.ai (`/gpt-image/…` job endpoint) | Nano Banana Pro via kie.ai (current primary → demoted) | Lovable AI `google/gemini-3.1-flash-image` |
+## Fix: paginated fetch with infinite scroll
 
-Reasoning stays "thinking" everywhere; only the model changes.
+Replace the single-shot query with a paginated one using TanStack Query's `useInfiniteQuery` and Supabase's `.range()`.
 
-## What actually changes in code (`supabase/functions/generate-creative/index.ts`)
+### Implementation
 
-1. **`analyzeFramework`**
-   - Swap the current kie chat call (`gemini-3-pro/v1/chat/completions`) for a `kieResponses` call to `gpt-5-5` on `/codex/v1/responses`, reusing the existing `framework_analysis` tool schema converted to the Responses `tools` shape (already done for Adapt, same pattern).
-   - Attach the reference image as an `input_image` block (Responses supports vision).
-   - On timeout/parse-fail → fall through to existing Gemini 3 Pro thinking call → then Lovable AI fallback.
+**1. `src/pages/History.tsx`**
+- Swap `useQuery` → `useInfiniteQuery`
+- Page size: 60 rows per page (fits 3 rows × 20 cards, cheap to fetch)
+- Query: `.select("*", { count: "exact" }).order("created_at", { ascending: false }).range(from, to)`
+- `getNextPageParam`: return next offset if `data.length === pageSize`, else `undefined`
+- Flatten pages into the existing `generations` array used by `filtered`
+- Add a sentinel `<div ref>` at the bottom of the grid that triggers `fetchNextPage()` via `IntersectionObserver` (or a simple "Load more" button — both work; infinite scroll is smoother)
+- Show a small skeleton row while `isFetchingNextPage`
+- Display total count in the header: "Generation History (3,597)"
 
-2. **`adaptDirective`**
-   - Already on GPT-5.5. No change beyond confirming timeouts (keep the shortened values from the last fix).
+**2. Handle filters correctly**
+Client-side filters (brand, date range, search) currently run on the loaded array. With pagination this only filters what's already fetched, which is misleading. Two options:
+- **Recommended:** push filters into the query itself (`.eq("brand_id", …)`, `.gte("created_at", …)`, `.ilike` join on brand name) so filtering searches the full history, not just the loaded pages.
+- Simpler fallback: keep filters client-side but auto-fetch more pages until either the filter has results or all pages are loaded. Slower for narrow filters but no query rewrite.
 
-3. **Image render (`renderNanoBanana` → rename `renderImage`)**
-   - New primary path: create kie GPT Image 2 job (`/gpt-image/generate` or the current kie image job endpoint — will confirm from the kie docs when building), poll same way as Nano Banana today.
-   - Reuse the identical prompt, reference-image, and logo-image payload builder — no prompt changes.
-   - On failure → fall back to Nano Banana Pro (existing code path, unchanged) → then Lovable AI image fallback.
+Pick the server-side path — it's the correct behavior and only ~15 extra lines.
 
-4. **Logging**
-   - Extend the existing `[Timing]` and `[gen …]` logs to record which model actually served each stage, so the next time quality drifts we can tell at a glance whether the primary or a fallback served it.
+**3. `src/pages/AdminHistory.tsx`**
+Apply the same pagination pattern here; the admin view has the same query shape and the same silent cap.
 
-## What does NOT change
-- Prompts, framework JSON schema, adapt tool schema, asset ordering (Image 1 = reference, Image 2 = logo), negative prompts, mood rotation, credit deduction, refund logic, RLS, brand-autofill, Studio UI.
-- No new secrets — `KIE_API_KEY` and `LOVABLE_API_KEY` already cover everything.
-- No DB migrations.
+## Out of scope
 
-## Verification before I say "done"
-- Deploy the function.
-- Run one live generation for **Absolute** and one for **Vaikunth** via the studio.
-- Read `[Timing]` + `[model]` logs to confirm the primaries served both runs end-to-end, and the output images render.
-- If either primary 4xx's, I fix the request body against the kie doc (per model, not carry-over) and rerun before closing out.
+- No database migration
+- No storage changes
+- No changes to `generate-creative` or any edge function
+- No changes to retention (there is no retention policy today; nothing is being deleted)
 
-## Risk / rollback
-- Single-file change. If GPT Image 2 quality disappoints, flipping the primary back to Nano Banana Pro is a one-line swap in `renderImage`.
-- Fallbacks stay identical to today, so worst case behavior = today's behavior.
+## Verification
+
+After the change:
+1. Open History → scroll to the bottom → confirm older pages load
+2. Filter by a brand that has old creatives → confirm March/April results appear
+3. Confirm the header count matches the DB total (~3,597)
+
+## Technical notes
+
+- TanStack Query v5 `useInfiniteQuery` requires `initialPageParam` (start at 0) and `getNextPageParam`
+- `count: "exact"` adds one COUNT query per fetch — fine at this scale; switch to `"estimated"` if it ever gets slow
+- `IntersectionObserver` sentinel should have `rootMargin: "400px"` so the next page starts loading before the user hits the end
