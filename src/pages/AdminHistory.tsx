@@ -1,5 +1,5 @@
-import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useMemo, useEffect, useRef } from "react";
+import { useQuery, useInfiniteQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
 import { useAuth } from "@/hooks/useAuth";
@@ -32,6 +32,8 @@ import {
 } from "@/components/ui/popover";
 import { Card, CardContent } from "@/components/ui/card";
 
+const PAGE_SIZE = 60;
+
 export default function AdminHistory() {
   const { user } = useAuth();
   const { isAdmin, isLoading: adminLoading } = useIsAdmin();
@@ -41,6 +43,7 @@ export default function AdminHistory() {
   const [dateTo, setDateTo] = useState<Date | undefined>();
   const [selectedGeneration, setSelectedGeneration] = useState<any | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
 
   const { data: brands = [] } = useQuery({
     queryKey: ["admin-all-brands"],
@@ -60,17 +63,49 @@ export default function AdminHistory() {
     enabled: !!user && isAdmin,
   });
 
-  const { data: generations = [], isLoading } = useQuery({
-    queryKey: ["admin-all-generations"],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("generations")
-        .select("*")
-        .order("created_at", { ascending: false });
-      return data ?? [];
-    },
+  const dateFromIso = dateFrom ? dateFrom.toISOString() : null;
+  const dateToIso = useMemo(() => {
+    if (!dateTo) return null;
+    const end = new Date(dateTo);
+    end.setHours(23, 59, 59, 999);
+    return end.toISOString();
+  }, [dateTo]);
+
+  const {
+    data,
+    isLoading,
+    isFetchingNextPage,
+    fetchNextPage,
+    hasNextPage,
+  } = useInfiniteQuery({
+    queryKey: ["admin-all-generations", brandFilter, userFilter, dateFromIso, dateToIso],
     enabled: !!user && isAdmin,
+    initialPageParam: 0,
+    queryFn: async ({ pageParam }) => {
+      const from = pageParam as number;
+      const to = from + PAGE_SIZE - 1;
+      let q = supabase
+        .from("generations")
+        .select("*", { count: "exact" })
+        .eq("status", "completed")
+        .order("created_at", { ascending: false })
+        .range(from, to);
+      if (brandFilter !== "all") q = q.eq("brand_id", brandFilter);
+      if (userFilter !== "all") q = q.eq("user_id", userFilter);
+      if (dateFromIso) q = q.gte("created_at", dateFromIso);
+      if (dateToIso) q = q.lte("created_at", dateToIso);
+      const { data, count } = await q;
+      return { rows: data ?? [], count: count ?? 0, nextOffset: from + PAGE_SIZE };
+    },
+    getNextPageParam: (lastPage) =>
+      lastPage.rows.length === PAGE_SIZE ? lastPage.nextOffset : undefined,
   });
+
+  const generations = useMemo(
+    () => (data?.pages ?? []).flatMap((p) => p.rows),
+    [data]
+  );
+  const totalCount = data?.pages?.[0]?.count ?? 0;
 
   const brandMap = useMemo(
     () => Object.fromEntries(brands.map((b) => [b.id, b.name])),
@@ -94,26 +129,27 @@ export default function AdminHistory() {
   }, [profiles]);
 
   const filtered = useMemo(() => {
+    if (!searchQuery) return generations;
+    const q = searchQuery.toLowerCase();
     return generations.filter((g) => {
-      // Only completed
-      if (g.status !== "completed") return false;
-      if (brandFilter !== "all" && g.brand_id !== brandFilter) return false;
-      if (userFilter !== "all" && g.user_id !== userFilter) return false;
-      if (searchQuery) {
-        const brandName = brandMap[g.brand_id] || "";
-        const userName = profileMap[g.user_id] || "";
-        if (!brandName.toLowerCase().includes(searchQuery.toLowerCase()) &&
-            !userName.toLowerCase().includes(searchQuery.toLowerCase())) return false;
-      }
-      if (dateFrom && new Date(g.created_at) < dateFrom) return false;
-      if (dateTo) {
-        const end = new Date(dateTo);
-        end.setHours(23, 59, 59, 999);
-        if (new Date(g.created_at) > end) return false;
-      }
-      return true;
+      const brandName = brandMap[g.brand_id] || "";
+      const userName = profileMap[g.user_id] || "";
+      return brandName.toLowerCase().includes(q) || userName.toLowerCase().includes(q);
     });
-  }, [generations, brandFilter, userFilter, dateFrom, dateTo, searchQuery, brandMap, profileMap]);
+  }, [generations, searchQuery, brandMap, profileMap]);
+
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || !hasNextPage) return;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && !isFetchingNextPage) fetchNextPage();
+      },
+      { rootMargin: "400px" }
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   const handleDownload = async (url: string, filename: string) => {
     try {
@@ -162,7 +198,9 @@ export default function AdminHistory() {
 
   return (
     <div className="p-6 lg:p-8 space-y-6 max-w-7xl mx-auto">
-      <h1 className="text-2xl font-display font-bold text-foreground">All Generations</h1>
+      <h1 className="text-2xl font-display font-bold text-foreground">
+        All Generations{totalCount ? ` (${totalCount.toLocaleString()})` : ""}
+      </h1>
 
       {/* Filters */}
       <div className="flex flex-wrap items-end gap-3">
@@ -250,60 +288,72 @@ export default function AdminHistory() {
           <p className="text-sm">No completed generations found.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-          {filtered.map((g) => {
-            const cw = getCopywriting(g);
-            return (
-              <Card
-                key={g.id}
-                className="overflow-hidden hover:shadow-lg transition-all cursor-pointer group"
-                onClick={() => setSelectedGeneration(g)}
-              >
-                <div className={`relative ${getAspectClass(g)} bg-muted overflow-hidden`}>
-                  {g.output_image_url ? (
-                    <>
-                      <img src={getThumbUrl(g.output_image_url, 480)} alt="Generated creative" className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300" loading="lazy" decoding="async" />
-                      <div className="absolute inset-0 bg-foreground/0 group-hover:bg-foreground/10 transition-colors flex items-center justify-center">
-                        <Eye className="h-8 w-8 text-card opacity-0 group-hover:opacity-100 transition-opacity drop-shadow-lg" />
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+            {filtered.map((g) => {
+              const cw = getCopywriting(g);
+              return (
+                <Card
+                  key={g.id}
+                  className="overflow-hidden hover:shadow-lg transition-all cursor-pointer group"
+                  onClick={() => setSelectedGeneration(g)}
+                >
+                  <div className={`relative ${getAspectClass(g)} bg-muted overflow-hidden`}>
+                    {g.output_image_url ? (
+                      <>
+                        <img src={getThumbUrl(g.output_image_url, 480)} alt="Generated creative" className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300" loading="lazy" decoding="async" />
+                        <div className="absolute inset-0 bg-foreground/0 group-hover:bg-foreground/10 transition-colors flex items-center justify-center">
+                          <Eye className="h-8 w-8 text-card opacity-0 group-hover:opacity-100 transition-opacity drop-shadow-lg" />
+                        </div>
+                      </>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
+                        <ImageOff className="h-8 w-8 mb-2 opacity-40" />
                       </div>
-                    </>
-                  ) : (
-                    <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
-                      <ImageOff className="h-8 w-8 mb-2 opacity-40" />
-                    </div>
-                  )}
-                  {g.reference_image_url && g.reference_image_url !== "" && (
-                    <div className="absolute bottom-2 left-2 h-12 w-12 rounded-lg border-2 border-card shadow-md overflow-hidden bg-muted">
-                      <img src={getThumbUrl(g.reference_image_url, 96)} alt="Reference" className="h-full w-full object-cover" loading="lazy" decoding="async" />
-                    </div>
-                  )}
-                </div>
-
-                <CardContent className="p-4 space-y-1">
-                  <div className="flex items-center justify-between gap-1">
-                    <p className="text-sm font-medium text-foreground truncate">{brandMap[g.brand_id] ?? "Unknown"}</p>
-                    <div className="flex items-center gap-1 shrink-0">
-                      {g.requested_aspect_ratio && (
-                        <Badge variant="outline" className="text-[10px]">
-                          {g.requested_aspect_ratio}
-                        </Badge>
-                      )}
-                      <Badge variant="secondary" className="text-[10px]">
-                        {profileMap[g.user_id] ?? "—"}
-                      </Badge>
-                    </div>
+                    )}
+                    {g.reference_image_url && g.reference_image_url !== "" && (
+                      <div className="absolute bottom-2 left-2 h-12 w-12 rounded-lg border-2 border-card shadow-md overflow-hidden bg-muted">
+                        <img src={getThumbUrl(g.reference_image_url, 96)} alt="Reference" className="h-full w-full object-cover" loading="lazy" decoding="async" />
+                      </div>
+                    )}
                   </div>
-                  {cw?.caption && (
-                    <p className="text-xs text-muted-foreground line-clamp-1">{cw.caption}</p>
-                  )}
-                  <p className="text-xs text-muted-foreground">
-                    {format(new Date(g.created_at), "MMM d, yyyy · h:mm a")}
-                  </p>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
+
+                  <CardContent className="p-4 space-y-1">
+                    <div className="flex items-center justify-between gap-1">
+                      <p className="text-sm font-medium text-foreground truncate">{brandMap[g.brand_id] ?? "Unknown"}</p>
+                      <div className="flex items-center gap-1 shrink-0">
+                        {g.requested_aspect_ratio && (
+                          <Badge variant="outline" className="text-[10px]">
+                            {g.requested_aspect_ratio}
+                          </Badge>
+                        )}
+                        <Badge variant="secondary" className="text-[10px]">
+                          {profileMap[g.user_id] ?? "—"}
+                        </Badge>
+                      </div>
+                    </div>
+                    {cw?.caption && (
+                      <p className="text-xs text-muted-foreground line-clamp-1">{cw.caption}</p>
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                      {format(new Date(g.created_at), "MMM d, yyyy · h:mm a")}
+                    </p>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+
+          <div ref={sentinelRef} className="flex items-center justify-center py-6 text-xs text-muted-foreground">
+            {isFetchingNextPage ? (
+              <span className="inline-flex items-center gap-2"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading more…</span>
+            ) : hasNextPage ? (
+              <Button variant="ghost" size="sm" onClick={() => fetchNextPage()}>Load more</Button>
+            ) : (
+              <span>Showing all {generations.length.toLocaleString()} of {totalCount.toLocaleString()}</span>
+            )}
+          </div>
+        </>
       )}
 
       {/* Detail dialog */}
