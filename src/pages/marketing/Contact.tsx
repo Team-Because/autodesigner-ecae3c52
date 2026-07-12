@@ -6,7 +6,7 @@ const contactSchema = {
   "@context": "https://schema.org",
   "@type": "ContactPage",
   url: `${SITE_URL}/contact`,
-  name: "Contact MakeMyAd",
+  name: "Contact BDesign",
   about: {
     "@type": "Organization",
     name: "Rellow Digital Private Limited",
@@ -28,8 +28,8 @@ export default function Contact() {
   return (
     <>
       <SEO
-        title="Contact MakeMyAd — Request Access for Your Agency"
-        description="Talk to the Because team about MakeMyAd. Request access, ask about pricing, or book a walkthrough for your marketing agency or brand team."
+        title="Contact BDesign — Request Access for Your Team"
+        description="Talk to the Because team about BDesign. Request access, ask about pricing, or book a walkthrough for your marketing agency or brand team."
         path="/contact"
         jsonLd={[contactSchema]}
       />
@@ -37,7 +37,7 @@ export default function Contact() {
       <section className="max-w-4xl mx-auto px-6 py-20">
         <p className="text-sm font-semibold uppercase tracking-wider text-primary">Contact</p>
         <h1 className="mt-3 text-4xl md:text-5xl font-display font-bold">
-          Talk to our team about MakeMyAd.
+          Talk to our team about BDesign.
         </h1>
         <p className="mt-5 text-lg text-muted-foreground max-w-2xl">
           Whether you want a demo, a price quote, or a workspace for your agency — drop us a note and we'll get back within one business day.

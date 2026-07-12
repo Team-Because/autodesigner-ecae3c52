@@ -20,9 +20,9 @@ export const MarketingLayout = () => (
 
     <header className="border-b border-border bg-background/80 backdrop-blur sticky top-0 z-40">
       <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
-        <Link to="/" className="flex items-center gap-2 font-display font-bold text-lg" aria-label="MakeMyAd home">
-          <img src="/logo-icon.png" alt="MakeMyAd logo" width={28} height={28} className="rounded" />
-          <span>MakeMyAd</span>
+        <Link to="/" className="flex items-center gap-2 font-display font-bold text-lg" aria-label="BDesign home">
+          <img src="/logo-icon.png" alt="BDesign logo" width={28} height={28} className="rounded" />
+          <span>BDesign</span>
           <span className="text-xs font-medium text-muted-foreground hidden sm:inline">by Because</span>
         </Link>
 
@@ -42,10 +42,10 @@ export const MarketingLayout = () => (
 
         <div className="flex items-center gap-2">
           <Button asChild variant="ghost" size="sm">
-            <Link to="/login" aria-label="Sign in to MakeMyAd">Sign in</Link>
+            <Link to="/login" aria-label="Sign in to BDesign">Sign in</Link>
           </Button>
           <Button asChild size="sm">
-            <Link to="/contact" aria-label="Request access to MakeMyAd">Request access</Link>
+            <Link to="/contact" aria-label="Request access to BDesign">Request access</Link>
           </Button>
         </div>
       </div>
@@ -59,8 +59,8 @@ export const MarketingLayout = () => (
       <div className="max-w-6xl mx-auto px-6 py-12 grid gap-10 md:grid-cols-4">
         <div className="md:col-span-1">
           <Link to="/" className="flex items-center gap-2 font-display font-bold">
-            <img src="/logo-icon.png" alt="MakeMyAd" width={24} height={24} className="rounded" />
-            MakeMyAd
+            <img src="/logo-icon.png" alt="BDesign" width={24} height={24} className="rounded" />
+            BDesign
           </Link>
           <p className="text-sm text-muted-foreground mt-3">
             One-click AI creative generation, built by{" "}
@@ -104,7 +104,7 @@ export const MarketingLayout = () => (
       <div className="border-t border-border">
         <div className="max-w-6xl mx-auto px-6 py-5 text-xs text-muted-foreground flex flex-col sm:flex-row gap-2 justify-between">
           <p>© {new Date().getFullYear()} Rellow Digital Private Limited. All rights reserved.</p>
-          <p>MakeMyAd is a product of Because — Branding &amp; Marketing Agency.</p>
+          <p>BDesign is a product of Because — Branding &amp; Marketing Agency.</p>
         </div>
       </div>
     </footer>

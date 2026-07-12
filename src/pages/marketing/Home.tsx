@@ -1,18 +1,18 @@
 import { Link } from "react-router-dom";
 import { SEO, SITE_URL, DEFAULT_OG_IMAGE } from "@/components/SEO";
 import { Button } from "@/components/ui/button";
-import { Sparkles, Zap, Layers, ShieldCheck, Wand2, ArrowRight } from "lucide-react";
+import { Sparkles, ArrowRight } from "lucide-react";
 
 const orgSchema = {
   "@context": "https://schema.org",
   "@type": "Organization",
-  name: "MakeMyAd",
-  alternateName: "MakeMyAd by Because",
+  name: "BDesign",
+  alternateName: "BDesign by Because",
   url: SITE_URL,
   logo: `${SITE_URL}/logo-icon.png`,
   image: DEFAULT_OG_IMAGE,
   description:
-    "One-click AI creative generation platform for marketing agencies. Set up your brand once, generate on-brand ad creatives in seconds.",
+    "BDesign turns a reference you liked into a creative that's entirely yours. Built by Because for marketing agencies and brand teams.",
   parentOrganization: {
     "@type": "Organization",
     name: "Rellow Digital Private Limited",
@@ -34,7 +34,7 @@ const orgSchema = {
 const softwareSchema = {
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
-  name: "MakeMyAd",
+  name: "BDesign",
   applicationCategory: "BusinessApplication",
   operatingSystem: "Web",
   offers: { "@type": "Offer", priceCurrency: "INR", price: "0", description: "Credit-based plans, contact for quote" },
@@ -48,8 +48,8 @@ export default function Home() {
   return (
     <>
       <SEO
-        title="MakeMyAd — AI Ad Creatives, On‑Brand, In One Click"
-        description="MakeMyAd turns a reference layout plus your brand kit into a finished, on‑brand ad creative in seconds. Built by Because for marketing agencies. Request access today."
+        title="BDesign — The internet is yours now."
+        description="Drop in a reference you liked. BDesign studies the structure, forgets the rest, and rebuilds it from your brand. Built by Because."
         path="/"
         jsonLd={[orgSchema, softwareSchema]}
       />
@@ -62,15 +62,19 @@ export default function Home() {
               <Sparkles className="h-3.5 w-3.5" /> Built by Because
             </span>
             <h1 className="mt-5 text-4xl md:text-6xl font-display font-bold leading-[1.05]">
-              AI ad creatives.<br />
-              <span className="text-primary">On‑brand.</span> In one click.
+              The internet is <span className="text-primary">yours</span> now.
             </h1>
-            <p className="mt-6 text-lg text-muted-foreground max-w-xl">
-              MakeMyAd is the fastest way for marketing agencies to produce on‑brand ad creatives.
-              Upload a reference, pick a brand from your{" "}
-              <Link to="/features" className="text-foreground underline underline-offset-4 hover:text-primary">Brand Hub</Link>,
-              and ship a polished creative in seconds.
-            </p>
+            <div className="mt-6 space-y-4 text-lg text-muted-foreground max-w-xl">
+              <p>
+                You have a folder like this somewhere. Screenshots of ads you liked. A poster you photographed off a wall for no real reason. That launch post from a competitor that made you a little jealous. It's full, and none of it has ever become anything.
+              </p>
+              <p>
+                BDesign is where it finally does.
+              </p>
+              <p>
+                Drop in whatever caught your eye. We study how it's built — where the eye lands first, how the type sits against the image — and forget everything else about it on purpose. Then we rebuild it from your logo, your colors, your product shots, your words. What comes out has never seen the inside of anyone else's brand.
+              </p>
+            </div>
             <div className="mt-8 flex flex-wrap gap-3">
               <Button asChild size="lg">
                 <Link to="/contact">Request access <ArrowRight className="ml-1.5 h-4 w-4" /></Link>
@@ -87,7 +91,7 @@ export default function Home() {
           <div className="relative">
             <img
               src="/og-image.jpg"
-              alt="MakeMyAd interface showing one-click AI ad creative generation for marketing agencies"
+              alt="BDesign interface — reference-driven, on-brand creative generation"
               width={1216}
               height={640}
               className="rounded-2xl border border-border shadow-2xl w-full h-auto"
@@ -98,43 +102,32 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Value props */}
+      {/* Narrative value section */}
       <section className="border-t border-border bg-muted/20">
-        <div className="max-w-6xl mx-auto px-6 py-20">
-          <h2 className="text-3xl md:text-4xl font-display font-bold max-w-2xl">
-            A creative studio that respects your brand book — automatically.
-          </h2>
-          <p className="mt-4 text-muted-foreground max-w-2xl">
-            MakeMyAd is purpose‑built for the way agencies actually work. Set up each brand once, then generate on‑brand ad variants without re‑briefing the AI every time.
+        <div className="max-w-3xl mx-auto px-6 py-20 space-y-6 text-lg text-foreground/90 leading-relaxed">
+          <p>
+            Set your brand up once — logo, colors, the fonts you actually use, and the things you never want to see. Ten minutes, and you're done with it for good.
+          </p>
+          <p>
+            Bring us a reference, from anywhere. Pick a size. Watch it become yours in under a minute — because structurally, it came from your own design system. We just skipped the afternoon it used to take.
           </p>
 
-          <div className="mt-12 grid md:grid-cols-3 gap-6">
-            {[
-              { icon: Zap, h: "One‑click generation", p: "Reference image plus a brand selection equals a finished ad creative. No prompts, no babysitting." },
-              { icon: Layers, h: "Brand Hub at the core", p: "Logos, colour palettes, typography rules, voice and never‑rules — stored per brand and enforced on every generation." },
-              { icon: ShieldCheck, h: "References as blueprints", p: "Layout structure is reused; subjects, names, locations, and pricing from the reference are never copied across." },
-              { icon: Wand2, h: "Multi‑format output", p: "Square, portrait, landscape, and story formats from the same brand brief — without redoing the work." },
-              { icon: Sparkles, h: "Fresh copy every time", p: "Headlines and sub‑copy are written for each creative with rotating moods, not recycled from your brief." },
-              { icon: ArrowRight, h: "Built for agencies", p: "Multi‑account workflows, credit allocation, and global usage analytics for owners and ops leads." },
-            ].map(({ icon: Icon, h, p }) => (
-              <article key={h} className="p-6 rounded-2xl border border-border bg-card">
-                <Icon className="h-6 w-6 text-primary" aria-hidden />
-                <h3 className="mt-4 text-lg font-semibold">{h}</h3>
-                <p className="mt-2 text-sm text-muted-foreground">{p}</p>
-              </article>
-            ))}
+          <div className="mt-10 p-8 rounded-2xl border-l-4 border-primary bg-card">
+            <p className="text-foreground">
+              Here's the part worth knowing: it can't actually copy anything. Not as a policy — as a mechanism. Every reference gets stripped of names, prices, faces, and text before anything is rebuilt. What survives is structure. What fills it back in is entirely yours.
+            </p>
           </div>
         </div>
       </section>
 
       {/* How it works */}
       <section className="max-w-6xl mx-auto px-6 py-20">
-        <h2 className="text-3xl md:text-4xl font-display font-bold">How MakeMyAd works</h2>
+        <h2 className="text-3xl md:text-4xl font-display font-bold">How BDesign works</h2>
         <ol className="mt-10 grid md:grid-cols-3 gap-6">
           {[
-            { n: "01", h: "Set up your Brand Hub", p: "Add your logo, palette, typography, voice and never‑rules. Or paste an existing brand brief and let our AI auto‑fill it." },
-            { n: "02", h: "Drop a reference", p: "Use any layout you like as a structural blueprint — uploaded, pasted, or sent in via our Chrome extension." },
-            { n: "03", h: "Generate & ship", p: "Pick a format, hit generate, and download an on‑brand ad creative in seconds. Iterate or duplicate at will." },
+            { n: "01", h: "Set up your Brand Hub", p: "Logo, palette, typography, voice, and the stuff you never want to see. Paste an existing brand brief and let it fill itself in, or do it by hand." },
+            { n: "02", h: "Drop in a reference", p: "An ad, a Pinterest board, a screenshot you don't remember saving. It doesn't matter where it's from." },
+            { n: "03", h: "Generate & ship", p: "Pick a format, hit generate, get a creative that looks like it came from your own team — because structurally, it did." },
           ].map((s) => (
             <li key={s.n} className="p-6 rounded-2xl border border-border bg-card">
               <div className="text-primary font-display font-bold text-2xl">{s.n}</div>
@@ -161,7 +154,7 @@ export default function Home() {
       <section className="border-t border-border">
         <div className="max-w-4xl mx-auto px-6 py-20 text-center">
           <h2 className="text-3xl md:text-4xl font-display font-bold">
-            Ready to make on‑brand ads in seconds?
+            Ready to stop admiring things and start owning them?
           </h2>
           <p className="mt-4 text-muted-foreground">
             Tell us about your agency or brand and we'll get you set up with a workspace.
