@@ -4,8 +4,8 @@ export default function Trust() {
   return (
     <>
       <SEO
-        title="Trust, Privacy & Security — MakeMyAd"
-        description="How MakeMyAd handles your brand data, who can access it, the platform controls we rely on, and how to reach us about security or privacy questions."
+        title="Trust, Privacy & Security — BDesign"
+        description="How BDesign processes reference images, isolates client brand vaults, and handles credits on failed generations."
         path="/trust"
       />
 
@@ -15,37 +15,60 @@ export default function Trust() {
           Trust, privacy & security
         </h1>
         <p className="mt-6 text-muted-foreground leading-relaxed">
-          This page is maintained by <strong>Rellow Digital Private Limited</strong> (the company behind MakeMyAd)
-          to answer common security and privacy questions about MakeMyAd. It is app‑owned editable content —
-          not an independent audit or certification.
+          This page is maintained by <strong>Rellow Digital Private Limited</strong> (the company behind BDesign)
+          to answer common security and privacy questions. It is app‑owned editable content — not an independent
+          audit or certification.
         </p>
 
         <div className="prose prose-neutral mt-12 max-w-none text-muted-foreground leading-relaxed">
+          <h2 className="text-foreground">How reference images are processed</h2>
+          <p>
+            When you upload a reference, it is not passed to the image generator. It first goes through an
+            analysis step that reads only the structural properties of the image: composition, focal weighting,
+            type placement, negative space, and colour distribution. During that same step, brand names, prices,
+            depictions of specific people, and any literal text are explicitly stripped out before a structural
+            directive is written.
+          </p>
+          <p>
+            The image generator that renders your final creative receives that structural directive together with
+            your logo, palette, product assets, and voice rules. It does not receive the original reference image.
+            This is a real step in the pipeline — not a disclaimer — and it is why references from anywhere on the
+            open web can be used without producing a knock‑off.
+          </p>
+
+          <h2 className="text-foreground">Client brand vault isolation</h2>
+          <p>
+            On the Agency tier, each client account has its own isolated Brand Hub. Assets, briefs, and
+            generations belonging to one client account are not readable by another client account on the same
+            agency workspace. Access to a given account is controlled by the agency admin. Row‑level security on
+            our backend enforces this at the database layer, not just in the UI.
+          </p>
+
           <h2 className="text-foreground">Accounts & access</h2>
           <ul className="list-disc pl-6 space-y-2">
-            <li>Accounts are created by a MakeMyAd admin and protected by an email address and password.</li>
+            <li>Accounts are created by a BDesign admin and protected by an email address and password.</li>
             <li>Sessions are managed by our backend provider and are scoped to the signed‑in user.</li>
             <li>Admin functionality (user management, account switching, global history) is gated by a server‑side role check, not by anything the browser can claim.</li>
           </ul>
 
-          <h2 className="text-foreground">How your data is isolated</h2>
-          <ul className="list-disc pl-6 space-y-2">
-            <li>Your brands, brand assets, and generated creatives are stored in row‑level‑secured database tables. Each row is bound to your user account.</li>
-            <li>Generations are visible only to the user who created them; the only exception is the MakeMyAd admin role, which can view global history for support and quality review.</li>
-            <li>Server‑side functions verify your session before running any AI work or touching billing.</li>
-          </ul>
+          <h2 className="text-foreground">Credits & failed generations</h2>
+          <p>
+            A credit is consumed when a generation attempt begins and is refunded automatically if the attempt
+            fails — model errors, aspect‑ratio mismatches caught by the auto‑retry step, or any downstream
+            failure. You are only billed for creatives that reach your history.
+          </p>
 
           <h2 className="text-foreground">Platform & hosting</h2>
           <p>
-            MakeMyAd runs on managed cloud infrastructure provided by our backend platform. Database traffic, file
-            storage, and authentication are handled by that platform, and connections to the app are served over HTTPS.
+            BDesign runs on managed cloud infrastructure. Database traffic, file storage, authentication, and
+            serverless functions are handled by that platform, and connections to the app are served over HTTPS.
             We describe enabled platform capabilities factually here — this is not a certification claim.
           </p>
 
           <h2 className="text-foreground">Subprocessors we rely on</h2>
           <ul className="list-disc pl-6 space-y-2">
             <li><strong>Backend platform</strong> — database, auth, file storage, and serverless functions.</li>
-            <li><strong>AI providers</strong> — used to analyse references and render creatives. The brand brief, reference images, and brand assets you submit are sent to these providers strictly to fulfil your generation request.</li>
+            <li><strong>AI providers</strong> — used to analyse reference structure and render creatives. The structural directive, your logo, and your brand assets are sent to these providers strictly to fulfil your generation request.</li>
           </ul>
           <p>
             We do not sell your data and we do not use your brand briefs or creatives to train third‑party models.
@@ -59,7 +82,7 @@ export default function Trust() {
 
           <h2 className="text-foreground">Reporting a security issue</h2>
           <p>
-            If you believe you have found a security vulnerability in MakeMyAd, please contact us at{" "}
+            If you believe you have found a security vulnerability in BDesign, please contact us at{" "}
             <a href="mailto:hello@becausebranding.in" className="text-primary underline">
               hello@becausebranding.in
             </a>

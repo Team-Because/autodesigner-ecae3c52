@@ -5,23 +5,61 @@ import { Check } from "lucide-react";
 
 const tiers = [
   {
-    name: "Studio",
-    audience: "Solo brand teams",
-    blurb: "For in-house teams running a single brand or a small portfolio.",
-    features: ["Up to 1 workspace", "Brand Hub with unlimited assets", "Square, portrait, landscape, story", "History & re‑generation", "Email support"],
+    name: "Starter",
+    price: "[price]",
+    cadence: "pay-as-you-go",
+    audience: "One brand, occasional use",
+    blurb: "For a solo team or a single brand testing the workflow.",
+    features: [
+      "1 Brand Hub",
+      "Pay-as-you-go credits",
+      "All four output formats",
+      "History & re-generation",
+      "Email support",
+    ],
   },
   {
-    name: "Agency",
-    audience: "Multi-brand teams",
-    blurb: "For agencies running many brands and campaigns in parallel.",
-    features: ["Multi-account workspaces", "Brand transfer & duplication", "Credit allocation per account", "Chrome extension", "Priority support"],
+    name: "Growth",
+    price: "[price]",
+    cadence: "per month",
+    audience: "In-house teams, one or two brands",
+    blurb: "Monthly credit bundle for teams shipping creative every week.",
+    features: [
+      "Up to 3 Brand Hubs",
+      "Monthly credit bundle",
+      "Priority queue",
+      "Chrome extension",
+      "Email support",
+    ],
     featured: true,
   },
   {
+    name: "Agency",
+    price: "[price]",
+    cadence: "per month",
+    audience: "Agencies with multiple clients",
+    blurb: "Unlimited client Brand Hubs, isolated per account, with per-seat credit tracking.",
+    features: [
+      "Unlimited client Brand Hubs",
+      "Multi-account workspaces",
+      "Per-seat credit tracking",
+      "Brand transfer & duplication",
+      "Admin usage analytics",
+    ],
+  },
+  {
     name: "Enterprise",
-    audience: "Large agencies & brands",
-    blurb: "For groups with custom volumes, governance, and integrations.",
-    features: ["Volume credit pools", "Global usage analytics", "Admin tooling & access controls", "Custom onboarding by Because", "Dedicated success manager"],
+    price: "[price]",
+    cadence: "custom",
+    audience: "Large agencies & brand groups",
+    blurb: "For teams that need API access, approval workflows, and negotiated volume.",
+    features: [
+      "API access",
+      "Approval workflows",
+      "Custom credit pools",
+      "SSO & access controls",
+      "Dedicated success manager",
+    ],
   },
 ];
 
@@ -29,21 +67,21 @@ export default function Pricing() {
   return (
     <>
       <SEO
-        title="Pricing — MakeMyAd Credit‑Based AI Creative Plans"
-        description="Simple credit-based pricing for AI creative generation. One credit per creative. Studio, Agency, and Enterprise plans for marketing teams. Get a quote."
+        title="Pricing — BDesign Credit-Based Plans"
+        description="Credit-based pricing for BDesign. Starter, Growth, Agency, and Enterprise plans. Credits are consumed per generation attempt and automatically refunded on failure."
         path="/pricing"
       />
 
-      <section className="max-w-5xl mx-auto px-6 py-20">
+      <section className="max-w-6xl mx-auto px-6 py-20">
         <p className="text-sm font-semibold uppercase tracking-wider text-primary">Pricing</p>
         <h1 className="mt-3 text-4xl md:text-5xl font-display font-bold">
-          One credit. One creative. Plans built for agencies.
+          One credit per generation. Refunded if it fails.
         </h1>
         <p className="mt-5 text-lg text-muted-foreground max-w-2xl">
-          MakeMyAd uses a transparent credit‑based model — every generated creative costs one credit. Pick the plan that fits your team and grow without surprise overages.
+          Credits are consumed when a generation starts. If it fails for any reason — the model errors out, the aspect ratio comes back wrong, anything — the credit is refunded automatically. You only pay for creatives you actually receive.
         </p>
 
-        <div className="mt-12 grid md:grid-cols-3 gap-6">
+        <div className="mt-12 grid md:grid-cols-2 lg:grid-cols-4 gap-6">
           {tiers.map((t) => (
             <article
               key={t.name}
@@ -56,6 +94,10 @@ export default function Pricing() {
               )}
               <h2 className="mt-3 text-2xl font-display font-bold">{t.name}</h2>
               <p className="text-sm text-muted-foreground">{t.audience}</p>
+              <div className="mt-4 flex items-baseline gap-1">
+                <span className="text-3xl font-display font-bold text-foreground">{t.price}</span>
+                <span className="text-sm text-muted-foreground">/ {t.cadence}</span>
+              </div>
               <p className="mt-4 text-sm">{t.blurb}</p>
               <ul className="mt-6 space-y-2 text-sm flex-1">
                 {t.features.map((f) => (
@@ -72,7 +114,7 @@ export default function Pricing() {
         </div>
 
         <p className="mt-10 text-sm text-muted-foreground">
-          Have questions about credits or volume? Read the{" "}
+          Questions about credit volumes or migrating a team? Read the{" "}
           <Link to="/faq" className="underline text-foreground">FAQ</Link>{" "}
           or{" "}
           <Link to="/contact" className="underline text-foreground">talk to us</Link>.

@@ -2,14 +2,34 @@ import { Link } from "react-router-dom";
 import { SEO } from "@/components/SEO";
 
 const faqs = [
-  { q: "What is MakeMyAd?", a: "MakeMyAd is a one‑click AI creative generation platform that turns a reference layout plus your brand kit into a finished, on‑brand ad creative in seconds." },
-  { q: "Who is MakeMyAd for?", a: "Marketing agencies, in‑house brand teams, and performance marketers who need to produce on‑brand ad creatives across formats — square, portrait, landscape, and story." },
-  { q: "How is MakeMyAd different from generic AI image tools?", a: "MakeMyAd is built around a Brand Hub that enforces logos, colours, typography, voice, and never‑rules per brand. References are treated as layout blueprints — never copied verbatim." },
-  { q: "How does pricing work?", a: "MakeMyAd uses a credit‑based model: one credit per generated creative. Plans are tailored per workspace. Contact us at aditya@teambecause.com for a quote." },
-  { q: "Do you store my brand assets securely?", a: "Yes. Brand assets are stored in your private workspace with row‑level security. Only your account (and admins you authorise) can access them." },
-  { q: "Which formats are supported?", a: "Square (1:1), portrait (4:5), landscape (16:9), and story (9:16). The same brand brief can produce variants in every format." },
-  { q: "Is there a Chrome extension?", a: "Yes — right‑click any image on the web and send it straight into MakeMyAd as a reference. Available from the Brand Hub onboarding." },
-  { q: "How do I get access?", a: "Accounts are admin‑created. Email aditya@teambecause.com or use the contact page to request a workspace." },
+  {
+    q: "Does BDesign copy the reference I upload?",
+    a: "No — and it's a mechanism, not a policy. Before any generation runs, the reference is analysed for structure only: composition, hierarchy, where the eye lands. Brand names, prices, faces, and literal text are stripped out at that step. The image generator never sees the original reference; it only sees the structural directive plus your brand assets.",
+  },
+  {
+    q: "Can I use a competitor's ad as a reference?",
+    a: "Yes. That's actually the point. Because names, prices, faces, and text are stripped before rebuilding, what carries over is composition, not identity. You get a creative built on the reference's structure using entirely your own brand.",
+  },
+  {
+    q: "Why does the copy sound different each generation?",
+    a: "Headlines and sub-copy are written from a rotating pool of tonal moods — declarative, curious, understated, playful, and so on — filtered against your brand's voice rules. It's designed so two creatives for the same brand don't hand you the same sentence twice.",
+  },
+  {
+    q: "What happens if a generation comes out the wrong aspect ratio?",
+    a: "It's checked automatically and re-rendered. Wrong-ratio outputs don't reach your history, and you don't get charged a credit for the attempt that failed.",
+  },
+  {
+    q: "How do credits work?",
+    a: "One credit per generation attempt. If the attempt fails for any reason — model error, aspect-ratio mismatch, anything — the credit is refunded automatically. You only pay for creatives you actually receive.",
+  },
+  {
+    q: "Can my team share a workspace?",
+    a: "Yes, on the Agency tier and up. Multiple accounts, isolated client Brand Hubs, per-seat credit tracking, and admin tools for moving brands and reviewing usage.",
+  },
+  {
+    q: "How do I get access?",
+    a: "Accounts are admin-created right now. Email aditya@teambecause.com or use the contact page and we'll set you up.",
+  },
 ];
 
 const faqSchema = {
@@ -26,8 +46,8 @@ export default function FAQ() {
   return (
     <>
       <SEO
-        title="FAQ — MakeMyAd AI Creative Platform Questions"
-        description="Frequently asked questions about MakeMyAd: brand setup, pricing, formats, security, Chrome extension, and how to request access for your agency."
+        title="FAQ — BDesign"
+        description="Answers to the common questions about BDesign: how references are handled, competitor ads, copy variation, credits, refunds, and team workspaces."
         path="/faq"
         jsonLd={[faqSchema]}
       />
@@ -37,9 +57,6 @@ export default function FAQ() {
         <h1 className="mt-3 text-4xl md:text-5xl font-display font-bold">
           Frequently asked questions
         </h1>
-        <p className="mt-5 text-lg text-muted-foreground">
-          Everything you might want to know before getting your team onto MakeMyAd.
-        </p>
 
         <div className="mt-12 space-y-8">
           {faqs.map((f) => (
@@ -54,7 +71,7 @@ export default function FAQ() {
           Still have questions?{" "}
           <Link to="/contact" className="underline text-foreground">Contact our team</Link>{" "}
           or read more about{" "}
-          <Link to="/features" className="underline text-foreground">what's inside MakeMyAd</Link>.
+          <Link to="/features" className="underline text-foreground">what's inside BDesign</Link>.
         </p>
       </section>
     </>
