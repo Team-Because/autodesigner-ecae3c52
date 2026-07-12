@@ -1,7 +1,7 @@
 import { Helmet } from "react-helmet-async";
 
 export const SITE_URL = "https://bdesign.teambecause.com";
-export const SITE_NAME = "MakeMyAd by Because";
+export const SITE_NAME = "BDesign by Because";
 export const DEFAULT_OG_IMAGE = `${SITE_URL}/og-image.jpg`;
 
 interface SEOProps {
