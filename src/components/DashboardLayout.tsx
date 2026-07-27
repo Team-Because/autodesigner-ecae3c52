@@ -1,9 +1,7 @@
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { Outlet, useLocation } from "react-router-dom";
-import { useAuth } from "@/hooks/useAuth";
-import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { useMyCredits } from "@/hooks/queries/useCredits";
 import { CreditCard } from "lucide-react";
 
 const PAGE_TITLES: Record<string, string> = {
@@ -27,21 +25,8 @@ function getPageTitle(pathname: string): string {
 
 export function DashboardLayout() {
   const location = useLocation();
-  const { user } = useAuth();
   const pageTitle = getPageTitle(location.pathname);
-
-  const { data: credits } = useQuery({
-    queryKey: ["my-credits", user?.id],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("user_credits")
-        .select("credits_remaining, credits_used")
-        .eq("user_id", user!.id)
-        .single();
-      return data;
-    },
-    enabled: !!user,
-  });
+  const { data: credits } = useMyCredits();
 
   return (
     <SidebarProvider>

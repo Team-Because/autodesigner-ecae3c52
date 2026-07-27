@@ -1,54 +1,35 @@
-import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useCallback } from "react";
-
-type EntityType = "brand" | "group" | "campaign" | "generation" | "credit" | "user";
-type Action =
-  | "brand.created"
-  | "brand.updated"
-  | "brand.deleted"
-  | "brand.archived"
-  | "brand.unarchived"
-  | "brand.duplicated"
-  | "brand.transferred"
-  | "brand.merged"
-  | "group.created"
-  | "group.renamed"
-  | "group.deleted"
-  | "group.transferred"
-  | "generation.started"
-  | "generation.completed"
-  | "generation.failed"
-  | "credit.assigned"
-  | "credit.set"
-  | "credit.reset"
-  | "user.created"
-  | "password.reset";
+import {
+  insertActivityLog,
+  type ActivityAction,
+  type ActivityEntityType,
+} from "@/services/activityLogs";
 
 export function useActivityLog() {
   const { user } = useAuth();
 
   const log = useCallback(
     async (
-      action: Action,
-      entityType: EntityType,
+      action: ActivityAction,
+      entityType: ActivityEntityType,
       entityId?: string,
-      metadata?: Record<string, unknown>
+      metadata?: Record<string, unknown>,
     ) => {
       if (!user) return;
       try {
-        await supabase.from("activity_logs" as any).insert({
-          user_id: user.id,
+        await insertActivityLog({
+          userId: user.id,
           action,
-          entity_type: entityType,
-          entity_id: entityId ?? null,
-          metadata: metadata ?? {},
+          entityType,
+          entityId,
+          metadata,
         });
       } catch {
-        // Fire-and-forget — don't break UX for logging failures
+        // Fire-and-forget — don't break UX for logging failures.
       }
     },
-    [user]
+    [user],
   );
 
   return { log };

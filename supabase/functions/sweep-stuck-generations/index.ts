@@ -5,46 +5,22 @@
 // Triggered by a pg_cron job (see migration). Idempotent — safe to call often.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
-};
+import { handleOptions } from "../_shared/cors.ts";
+import { jsonResponse } from "../_shared/http.ts";
+import { serviceClient, verifyCronSecret } from "../_shared/auth.ts";
 
 const STUCK_STATUSES = ["processing", "analyzing", "adapting", "generating"];
 const STUCK_AFTER_MINUTES = 15;
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
-  }
+  const preflight = handleOptions(req);
+  if (preflight) return preflight;
 
   try {
-    // Require a shared secret so random internet callers cannot disrupt
-    // in-progress generations. The pg_cron job (or operator) must send
-    // the `x-cron-secret` header matching the CRON_SECRET env var.
-    const expected = Deno.env.get("CRON_SECRET");
-    if (!expected) {
-      return new Response(
-        JSON.stringify({ ok: false, error: "CRON_SECRET not configured" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
-    }
-    const provided = req.headers.get("x-cron-secret") || "";
-    if (provided !== expected) {
-      return new Response(
-        JSON.stringify({ ok: false, error: "Unauthorized" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
-    }
+    const cronFail = verifyCronSecret(req);
+    if (cronFail) return cronFail;
 
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-    );
-
+    const supabase = serviceClient();
     const cutoff = new Date(Date.now() - STUCK_AFTER_MINUTES * 60 * 1000).toISOString();
 
     const { data, error } = await supabase
@@ -58,17 +34,10 @@ serve(async (req) => {
 
     const swept = data?.length ?? 0;
     console.log(`Swept ${swept} stuck generation(s) older than ${STUCK_AFTER_MINUTES}min`);
-
-    return new Response(
-      JSON.stringify({ ok: true, swept, cutoff }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
-    );
+    return jsonResponse({ ok: true, swept, cutoff });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Unknown error";
     console.error("sweep-stuck-generations error:", msg);
-    return new Response(
-      JSON.stringify({ ok: false, error: msg }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-    );
+    return jsonResponse({ ok: false, error: msg }, 500);
   }
 });

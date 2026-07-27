@@ -1,7 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
-import { useAuth } from "@/hooks/useAuth";
 import { Navigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -15,53 +12,30 @@ import {
 import { Loader2, Users, Palette, TrendingUp, CreditCard } from "lucide-react";
 import { format, startOfMonth, endOfMonth, subMonths } from "date-fns";
 import { useState, useMemo } from "react";
+import {
+  useAdminAllBrands,
+  useAdminAllGenerations,
+  useAdminCredits,
+  useAdminProfiles,
+} from "@/hooks/queries/useAdmin";
 
 export default function AdminDashboard() {
-  const { user } = useAuth();
   const { isAdmin, isLoading: adminLoading } = useIsAdmin();
   const [monthOffset, setMonthOffset] = useState(0);
 
   const monthStart = startOfMonth(subMonths(new Date(), monthOffset));
   const monthEnd = endOfMonth(subMonths(new Date(), monthOffset));
 
-  const { data: profiles = [], isLoading: profilesLoading } = useQuery({
-    queryKey: ["admin-profiles"],
-    queryFn: async () => {
-      const { data } = await supabase.from("profiles").select("*");
-      return data ?? [];
-    },
-    enabled: !!user && isAdmin,
-  });
-
-  const { data: brands = [] } = useQuery({
-    queryKey: ["admin-all-brands"],
-    queryFn: async () => {
-      const { data } = await supabase.from("brands").select("id, name, user_id");
-      return data ?? [];
-    },
-    enabled: !!user && isAdmin,
-  });
-
-  const { data: generations = [], isLoading: gensLoading } = useQuery({
-    queryKey: ["admin-all-generations"],
-    queryFn: async () => {
-      const { data } = await supabase.from("generations").select("id, user_id, brand_id, status, created_at").order("created_at", { ascending: false });
-      return data ?? [];
-    },
-    enabled: !!user && isAdmin,
-  });
-
-  const { data: credits = [] } = useQuery({
-    queryKey: ["admin-credits"],
-    queryFn: async () => {
-      const { data } = await supabase.from("user_credits").select("*");
-      return data ?? [];
-    },
-    enabled: !!user && isAdmin,
-  });
+  const { data: profiles = [], isLoading: profilesLoading } = useAdminProfiles();
+  const { data: brands = [] } = useAdminAllBrands(true);
+  const { data: generations = [], isLoading: gensLoading } = useAdminAllGenerations();
+  const { data: credits = [] } = useAdminCredits();
 
   // Only count completed generations for credits
-  const completedGens = useMemo(() => generations.filter((g) => g.status === "completed"), [generations]);
+  const completedGens = useMemo(
+    () => generations.filter((g) => g.status === "completed"),
+    [generations],
+  );
 
   const monthGenerations = useMemo(() => {
     return completedGens.filter((g) => {
@@ -73,7 +47,6 @@ export default function AdminDashboard() {
   const totalCreditsRemaining = credits.reduce((s, c) => s + c.credits_remaining, 0);
   const totalCreditsUsed = credits.reduce((s, c) => s + c.credits_used, 0);
 
-  // Usage by user (only completed)
   const usageByUser = useMemo(() => {
     const map: Record<string, { name: string; monthCount: number; totalCount: number; creditsRemaining: number; creditsUsed: number; brandCount: number }> = {};
     for (const p of profiles) {
@@ -97,7 +70,6 @@ export default function AdminDashboard() {
     return Object.entries(map).sort((a, b) => b[1].creditsUsed - a[1].creditsUsed);
   }, [profiles, credits, monthGenerations, completedGens, brands]);
 
-  // Usage by brand (only completed)
   const usageByBrand = useMemo(() => {
     const map: Record<string, { name: string; owner: string; count: number }> = {};
     for (const b of brands) {
@@ -141,7 +113,6 @@ export default function AdminDashboard() {
         </Select>
       </div>
 
-      {/* Global Stats */}
       {isLoading ? (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {Array.from({ length: 4 }).map((_, i) => (
@@ -202,7 +173,6 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* This month */}
       <Card>
         <CardHeader>
           <CardTitle className="text-base font-display">
@@ -215,7 +185,6 @@ export default function AdminDashboard() {
         </CardContent>
       </Card>
 
-      {/* Usage by User */}
       <Card>
         <CardHeader>
           <CardTitle className="text-base font-display">Usage by Account</CardTitle>
@@ -248,7 +217,6 @@ export default function AdminDashboard() {
         </CardContent>
       </Card>
 
-      {/* Usage by Brand */}
       <Card>
         <CardHeader>
           <CardTitle className="text-base font-display">Usage by Brand — {format(monthStart, "MMMM yyyy")}</CardTitle>
