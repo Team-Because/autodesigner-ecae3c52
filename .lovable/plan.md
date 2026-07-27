@@ -1,110 +1,159 @@
-## BDesign — Folder-First Marketing Site Redesign
+# Codebase Architecture Audit
 
-Rebuild the marketing surface around one central metaphor: a macOS-style **brand folder**. Blue = ownership, yellow = the moment of claim, accent scatter = unclaimed references from the internet. White canvas, Plus Jakarta Sans, Apple-clean.
-
-Scope is **marketing pages only** (`src/pages/marketing/*`, `MarketingLayout`, `SEO`, `index.html`, `index.css`, `tailwind.config.ts`, new components under `src/components/marketing/folder/`). No changes to Studio, Brand Hub, edge functions, or the extension.
+Read-only review. Nothing was modified. Numbers below come directly from the current tree (`13,489` LOC across `100` TS/TSX files; `3,440` LOC across 6 edge functions).
 
 ---
 
-### 1. Design tokens & foundation
+## 1. Snapshot — where the weight sits
 
-Update `src/index.css` + `tailwind.config.ts` with the folder system:
+**Top-heavy files (should be the first thing you notice):**
 
-- **Colors** (HSL tokens): white canvas `#FFFFFF`, paper `#FAFAFB`, ink `#14162B`, ink-soft `#6B6E85`, line `#ECEDF2`. Blue scale `blue-50 → blue-900` (500 = `#3D63FF`). Yellow scale (500 = `#FFC93C`). Accent scatter: coral `#FF6B4A`, violet `#8B5CF6`, mint `#22C08E`, pink `#FF5FA2`, sky `#3D9BFF` — **restricted to reference-material components only**.
-- **Radius**: `--r-chip 8`, `--r-field 12`, `--r-folder 16`, `--r-pill 100`.
-- **Spacing**: 4/8/12/20/32/56/96.
-- **Typography**: Plus Jakarta Sans (400–800) via Google Fonts in `index.html`; JetBrains Mono for small system labels/eyebrows only. Retire Outfit/Inter.
-- **Motion rules** codified as reusable keyframes: `folder-settle` (1.00 → 1.04 → 1.00, no rotation), `yellow-flash` (single 600ms pulse, non-loopable), `reference-align` (rotate + scale jitter → 0/1.0).
+| File | LOC | Concern |
+|---|---:|---|
+| `supabase/functions/generate-creative/index.ts` | **2,584** | Entire pipeline (Kie client, Lovable client, framework analysis, adapt, render, moods, prompt builders, HTTP handler, worker) in one file |
+| `src/pages/BrandForm.tsx` | **917** | UI + data fetching + storage uploads + validation + categorization + parsing all inline |
+| `src/pages/Studio.tsx` | **780** | UI + realtime subscriptions + upload + generation orchestration + polling + result rendering |
+| `src/pages/BrandHub.tsx` | 759 | UI + queries + campaign grouping logic |
+| `src/pages/AdminUsers.tsx` | 568 | UI + admin RPCs + role management |
 
-### 2. Core Folder component system
-
-New folder under `src/components/marketing/folder/`:
-
-- **`BrandFolder.tsx`** — reusable SVG/CSS folder. Props: `color` (hex), `name`, `logoUrl`, `palette` (2–3 hex), `state` ('empty' | 'receiving' | 'active' | 'client'), `size`. Renders: gradient body in brand color, tab, two paper edges peeking behind, rounded-square logo slot (letter fallback), row of palette dots, name label below.
-- **`ReferenceCard.tsx`** — sharp-cornered thumbnail with random tilt (−6° to +6°), scatter-color border/tag. The only sharp corners in the system.
-- **`FolderTab.tsx`** — nav-tab variant of the folder shape, used by `MarketingLayout` for the active-page indicator.
-- **`ClaimFlash.tsx`** — wrapper that plays the once-only yellow flash when a child element enters "claimed" state.
-
-### 3. MarketingLayout rework
-
-`src/components/marketing/MarketingLayout.tsx`:
-
-- Sticky white/blur nav, max-width 1180px.
-- Logo lockup: small folder mark + "BDesign" wordmark, "by Because" secondary.
-- Nav items rendered as **folder tabs** — the active tab sits ~4px forward with the folder-tab shape; inactive items are plain text. Words only, no icons.
-- CTA: pill button, blue-500 fill, subtle blue glow shadow.
-- Footer keeps current information but restyled with the new tokens (pill links, folder-mark logo, dashed "add a brand" motif in the contact block).
-
-### 4. Homepage (`Home.tsx`) — folder-native, seven sections
-
-Order locked to the positioning brief:
-
-1. **Hero — "What is this?"**
-   Left: eyebrow chip ("Built by Because"), H1 "The internet is <span>yours</span> now." (yellow highlight flashes once on load), sub "See it. Steal it. Brand it.", two pill CTAs.
-   Right: **hero folder composition** — one large `BrandFolder` (blue, "Your brand"), 4–5 `ReferenceCard`s floating around it with scatter colors and tilt, gently drifting toward the folder on scroll (Framer Motion, `useScroll` transforms — no scroll-hijack).
-
-2. **Recognition — "Is this for me?"**
-   Full-bleed paragraph: the screenshot-folder-everyone-has line. Behind it, a soft mosaic of tilted reference cards (scatter colors) with low opacity.
-
-3. **Mechanism — "Will this embarrass me?"**
-   Two-column: left = the strip-before-rebuild copy in three short beats; right = **THEIRS → YOURS hover demo**. Hover a reference card → it slides into the folder → yellow flash → emerges as a branded creative card (blue border, logo badge, palette dots). CSS `:hover` + Framer Motion `layoutId` for the transition. Reduced-motion fallback: side-by-side static.
-
-4. **The re-prompting problem — "Will this become a chore?"**
-   Split card: left = a fake "ChatGPT chat" showing repeat brand-context pasting, muted greys; right = the same task in BDesign, one click, brand folder pre-loaded. Direct, no jokes.
-
-5. **Proof — "Show me"**
-   Real before/after gallery using the JPGs from the uploaded zip. Each pair rendered as `ReferenceCard` (left) → `BrandFolder`-tinted output card (right), with a small "claimed" chip in yellow between them.
-
-6. **Built for teams — "Does this fit how I work?"**
-   Two folder groups side-by-side. Solo = one blue folder. Agency = a grid of ~6 folders in different client colors (with logo badges + palette dots) — the actual dashboard preview.
-
-7. **Pricing shape + Close**
-   Four pill-cards (Creator / Business / Agency / Enterprise), tier name + one line each, ₹ figures kept as `[price]` placeholders. Single repeated primary CTA below: "Request access".
-
-### 5. Inner marketing pages
-
-Same voice, same folder object, tightened for scannability.
-
-- **Features.tsx** — hero + feature blocks organized as "folders" (each feature is a mini folder card with a title and 2–3 lines). Reuse `BrandFolder` in `empty`/`active` states as section markers.
-- **How it works** (new section on Features or its own `HowItWorks.tsx` route added to `App.tsx` + `MarketingLayout` nav — TBD in build): three scroll steps using the folder as the through-line: (1) empty brand folder appears with brand name label; (2) a `ReferenceCard` drops into it; (3) the same card exits as a branded creative — yellow flash once at step 3.
-- **Pricing.tsx** — four pill-cards, folder-mark next to each tier name, ₹ placeholders retained.
-- **About.tsx** — keep Because narrative; add a small folder-grid "brands we've worked with" using letter-fallback logos.
-- **FAQ.tsx** — accordion restyled with folder-tab headers.
-- **Contact.tsx** — restyle only (tokens, pill inputs); content unchanged.
-- **Trust.tsx** — restyle only.
-
-### 6. SEO / assets / cleanup
-
-- Update `SEO.tsx` defaults — SITE_URL stays `https://autodesigner.lovable.app` (custom domain not yet cut over — flag as TBD if user wants `bdesign.teambecause.com` swapped now).
-- `index.html`: preconnect + link Plus Jakarta Sans and JetBrains Mono; keep existing title/description written last turn.
-- Retire any Outfit/Inter references in `tailwind.config.ts` and swap `font-display`/`font-sans` to Plus Jakarta.
-- New `logo-icon.png` not required — the folder mark is CSS/SVG. `og-image.jpg` reused for now; a new folder-hero OG image can be generated in a follow-up if wanted.
-
-### 7. Motion & accessibility
-
-- All motion via Framer Motion (already in stack). `viewport={{ once: true }}` everywhere.
-- `prefers-reduced-motion`: yellow flash becomes an instant static yellow underline; reference-card drift and hover demo become static layouts.
-- Nav folder-tab keyboard focus ring in blue-500; contrast checked against white.
+Everything else is under 450 LOC and mostly fine. The problem is concentrated in **5 files**.
 
 ---
 
-### Technical notes
+## 2. Findings by category
 
-- Framer Motion is already installed; no new packages required.
-- Zero backend/schema changes. Zero edge-function changes.
-- All existing marketing routes and paths preserved; only visual + a possible new `/how-it-works` route (confirm before adding).
-- Uploaded HTMLs are used only as loose inspiration — the final build follows this spec, not those files, and the folder component is built properly in React with tokens (not the inline styles from the HTML).
+### 2.1 Separation of concerns — the main issue
 
-### Out of scope this pass
+Every page in `src/pages/` calls `supabase.*` directly (12 of 12 pages). There is no data-access layer. Symptoms:
 
-- In-product Dashboard/Brand Hub folder redesign (spec-ready but explicitly separate; the folder component built here is reusable when we move into the app).
-- Chrome extension hover mode.
-- Manual text overlay tool.
-- Custom domain switch.
-- Backfilling old copy on inner pages beyond restyling — content stays as written last turn unless you flag specifics.
+- **`Studio.tsx`** mixes: file upload to Storage, insert into `generations`, realtime channel subscription, function invocation, polling fallback (`recover-generation`), progress state machine, image download for "Save PNG", and the entire UI. Any change to the pipeline touches UI code.
+- **`BrandForm.tsx`** mixes: 900+ lines of form state (15+ `useState`), inline `INDUSTRY_CATEGORIES` taxonomy, storage upload/delete, brand+assets insert/update sequencing, and rendering. The taxonomy (`BASE_CATEGORIES`, `INDUSTRY_CATEGORIES`, lines 24–95) is domain data that belongs in `src/lib/`, not in a form component.
+- **`History.tsx` / `AdminHistory.tsx`** duplicate the infinite-query + filter pattern. Same shape, two implementations.
+- **`AppSidebar.tsx`** queries the DB for role/branding. Sidebar shouldn't own data fetching — a hook should.
 
-### Open questions before build
+**Root cause:** no `src/services/` or `src/api/` boundary. Pages import `supabase` and hand-roll queries. This is the single highest-leverage refactor.
 
-1. **Add a dedicated `/how-it-works` route**, or keep the three-step folder sequence as a section inside Home + Features?
-2. **Swap SITE_URL to `bdesign.teambecause.com`** now, or leave `autodesigner.lovable.app` until DNS is cut?
-3. **New OG hero image** (folder composition) generated this pass, or reuse existing `og-image.jpg`?
+### 2.2 `generate-creative/index.ts` — 2,584-line monolith
+
+One file contains ~15 responsibilities that map cleanly to modules:
+
+```text
+generate-creative/
+  index.ts                → HTTP handler + worker only
+  clients/kie.ts          → kieChat, kieResponses, kieGenerateImage, error mapping
+  clients/lovable.ts      → lovableChat, image-safety helpers
+  pipeline/analyze.ts     → analyzeFramework + framework parsing/sanitization
+  pipeline/adapt.ts       → adaptDirective + directive parsing
+  pipeline/render.ts      → generateCreative (image render + retries)
+  pipeline/moods.ts       → CREATIVE_MOODS + deriveBrandMoods + pickMoodFromAllowed
+  pipeline/fallbacks.ts   → buildLocalDirectiveFallback + buildLocalFrameworkFallback
+  prompts/*.ts            → buildDirectivePrompt, buildFallbackPrompt, system prompts
+  utils/images.ts         → extractPngDimensions, extractJpegDimensions, isAspectRatioMatch
+  utils/text.ts           → toCompactText, splitNevers, extractExampleCopy
+```
+
+Concrete complexity smells here:
+- Constants and helpers interleaved with async orchestration (dimension parsers on line 50 sit above the HTTP handler at 2179).
+- Three JSON-extraction paths (`extractFrameworkFromContent`, `extractDirectiveFromContent`, `candidateJsonBlocks`) — extract to one shared `parseJsonyLLMOutput` utility.
+- `ASSET_ROLE_INSTRUCTIONS` (line 1409) and `NORM_ZONE_MAP` (line 97) are prompt-engineering data that should live in `prompts/` beside the prompts that use them.
+
+### 2.3 Duplication
+
+- **`src/hooks/use-toast.ts` and `src/components/ui/use-toast.ts`** are the same file (184 lines each). shadcn ships a re-export shim; you have two copies. Consumers may import either — hard to track.
+- **`src/lib/types.ts`** defines `Brand` and `BrandAsset` by hand. `src/integrations/supabase/types.ts` already generates authoritative types from the schema. The hand-written ones will drift (they're missing `industry`, `campaign_id`, `extra_colors`, `never_visual`, `never_content` — all fields the code actually uses).
+- Storage bucket string `"brand-assets"` is hardcoded in `BrandForm`, `Studio`, `BrandHub` and (probably) admin pages. Same for the `"generations"`, `"brands"`, `"campaigns"` table names — no central constants.
+
+### 2.4 Hook boundary is thin
+
+`src/hooks/` has 5 files. Missing hooks that would remove hundreds of lines from pages:
+- `useBrands()`, `useBrand(id)`, `useSaveBrand()`, `useBrandAssets(id)`
+- `useGenerations({ filter })` — used differently by `History`, `AdminHistory`, `Dashboard`
+- `useGenerationRun()` — encapsulates the Studio upload → invoke → realtime → polling flow
+- `useCampaigns()`
+- `useAdminUsers()` — currently inlined in `AdminUsers.tsx`
+
+### 2.5 Types & contracts
+
+- `Brand` in `src/lib/types.ts` (11 fields) vs `Database["public"]["Tables"]["brands"]` (many more) — the local type is a stale subset.
+- `GenerationResult` is defined inline in `Studio.tsx` (line 57). Any other page displaying a generation redefines its own shape.
+- The pipeline's `CreativeDirective` type lives inside `generate-creative/index.ts` but conceptually is a contract between the edge function and any future admin surface — belongs in `supabase/functions/_shared/`.
+
+### 2.6 Missing `_shared/` in edge functions
+
+Every function re-implements CORS, JWT extraction, and `supabase-admin` client creation. `brand-autofill/index.ts` (420 LOC) and `generate-creative/index.ts` both have their own SSRF guards, their own header parsers, their own error responders. A `supabase/functions/_shared/{cors,auth,http,ssrf}.ts` set would remove ~150 LOC of duplication and make the security posture centrally auditable.
+
+### 2.7 Marketing vs app split — good, with one gap
+
+The `src/components/marketing/` split is clean. The gap: `src/pages/marketing/` is a flat folder of 7 files, while the app pages are also flat in `src/pages/`. Suggest promoting the split to top-level: `src/pages/marketing/` (done), `src/pages/app/`, `src/pages/admin/`. Right now `AdminHistory.tsx` sits next to `Dashboard.tsx` next to `Login.tsx` — different audiences, same folder.
+
+### 2.8 Testing surface
+
+Only `src/test/example.test.ts` exists. `brandParser.ts`, `brandHealth.ts`, the prompt builders, `sanitizeFramework`, and the JSON extractors are pure functions — high-value, zero-cost to unit-test. Their absence isn't a bug, but it's the reason regressions in the generation pipeline are only caught by running real generations.
+
+### 2.9 Smaller items
+
+- `src/lib/utils.ts` is 6 LOC (just `cn`). Fine, but the naming implies more will be dumped there. Consider `src/lib/tailwind.ts` and reserve `lib/` for domain modules.
+- `src/integrations/lovable/index.ts` is auto-generated but imports `supabase` and mutates its session — worth a comment noting this cross-integration coupling.
+- `voiceRules`, `visualNevers`, `contentNevers`, `legacyNevers` in `BrandForm` (line 122–125) hint that the "nevers" concept is under-modeled — a `NeverRules` type/parser in `src/lib/brandRules.ts` would make the back-compat migration explicit.
+
+---
+
+## 3. Recommendations — ordered by impact
+
+### Critical (do these first — every future feature is faster after)
+
+1. **Introduce a data-access layer.** Create `src/services/{brands,generations,campaigns,admin,storage}.ts`. Every `supabase.*` call from pages moves in. Then wrap in `src/hooks/queries/*` (React Query). Expected: `Studio.tsx` drops from 780 → ~350 LOC; `BrandForm.tsx` from 917 → ~450.
+
+2. **Break up `generate-creative/index.ts`.** Split into the module tree in §2.2. No behavior change — same exports from `index.ts`. Enables actually testing the pipeline stages and makes the "which model does what" question answerable by reading a folder listing.
+
+3. **Kill the duplicate `use-toast.ts`.** Delete `src/components/ui/use-toast.ts` (or make it a one-line re-export). Pick one canonical import path.
+
+4. **Delete `src/lib/types.ts` and use generated types.** Replace `Brand`, `BrandAsset` usages with `Database["public"]["Tables"]["brands"]["Row"]` (or a `type Brand = Tables<"brands">` alias in a single `src/lib/db.ts`). Prevents silent schema drift.
+
+### High (structural cleanup, no behavior change)
+
+5. **Extract shared edge-function utilities.** Create `supabase/functions/_shared/{cors,auth,ssrf,errors,supabase-admin}.ts`. Migrate all 6 functions to consume them. Centralizes JWT verification and SSRF policy.
+
+6. **Move domain data out of `BrandForm.tsx`.** `INDUSTRY_CATEGORIES`, `BASE_CATEGORIES`, `getAssetCategories` → `src/lib/industries.ts`. Never-rules parsing → `src/lib/brandRules.ts`.
+
+7. **Extract `useGenerationRun()` hook from `Studio.tsx`.** Encapsulates: upload reference → insert generation row → invoke edge function → subscribe to realtime → poll `recover-generation` → normalize result. UI becomes a presenter.
+
+8. **Deduplicate History patterns.** `useGenerations({ scope: "self" | "global", filters })` used by both `History.tsx` and `AdminHistory.tsx`. Single infinite-query + filter component (`<GenerationHistoryList/>`).
+
+9. **Sub-folder pages by audience.** `src/pages/app/*`, `src/pages/admin/*`, keep `src/pages/marketing/*`. Update `App.tsx` imports.
+
+### Medium (quality of life)
+
+10. **Constants file for tables and buckets.** `src/lib/db.ts` exports `TABLES` and `BUCKETS` enums. Removes ~30 magic strings.
+
+11. **Promote shared contracts.** Move `CreativeDirective`, `Framework`, `GenerationStatus` types into `supabase/functions/_shared/contracts.ts` and re-export from `src/lib/contracts.ts` (Deno + Vite friendly).
+
+12. **Component-tier `<BrandCard/>`, `<GenerationCard/>`, `<AssetTile/>`.** These shapes are rebuilt inline across Dashboard, BrandHub, History, Admin*. One component each, reused.
+
+13. **Split `AppSidebar.tsx`** into `AppSidebar` (presentation) + `useSidebarBranding()` (data).
+
+### Optional (nice to have)
+
+14. **Unit tests for pure functions.** `sanitizeFramework`, `extractFrameworkFromContent`, `deriveBrandMoods`, `splitNevers`, `brandParser.ts`, `brandHealth.ts`. Fastest ROI on test coverage.
+
+15. **`src/features/` layout (feature-first).** Once services + hooks exist, group by feature: `src/features/{brand-hub,studio,history,admin,marketing}/{components,hooks,services}`. Only worth doing after step 1 lands.
+
+16. **JSDoc the edge-function pipeline stages** — one paragraph per module explaining input contract, model used, fallback chain. Rescues the "how does the system work" question from the code itself.
+
+17. **Consider Zod schemas at trust boundaries** — edge-function request bodies, LLM JSON outputs. Would replace the hand-rolled `isValidFramework` + `parseStoredFramework` + `ensureFrameworkShape` chain in one shot.
+
+---
+
+## 4. What is already good
+
+- Clean auth/routing shell in `App.tsx` — small, readable, correct role guards.
+- `src/components/marketing/folder/*` is well-scoped (small, presentational, no data).
+- `src/hooks/useAuth.tsx`, `useIsAdmin.ts` are the right shape — more hooks should look like these.
+- Edge functions correctly use RLS + server-side role checks, and `try_consume_credit` is atomic. Security posture doesn't need structural changes, just the shared utilities in §3.5.
+- Marketing pages don't leak into app code and vice versa.
+
+---
+
+## 5. Suggested first PR (if you take this on)
+
+Bundle steps **1 + 3 + 4** together. They are the highest-leverage, lowest-risk changes and unblock everything else. Steps **2 + 5** (edge-function split) go in a second PR because they touch a different codebase (Deno vs Vite).
