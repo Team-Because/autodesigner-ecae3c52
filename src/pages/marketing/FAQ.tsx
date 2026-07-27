@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { SEO } from "@/components/SEO";
+import { FolderMark } from "@/components/marketing/folder/FolderMark";
 
 const faqs = [
   {
@@ -8,27 +9,27 @@ const faqs = [
   },
   {
     q: "Can I use a competitor's ad as a reference?",
-    a: "Yes. That's actually the point. Because names, prices, faces, and text are stripped before rebuilding, what carries over is composition, not identity. You get a creative built on the reference's structure using entirely your own brand.",
+    a: "Yes. That's the point. Because names, prices, faces, and text are stripped before rebuilding, what carries over is composition, not identity.",
   },
   {
     q: "Why does the copy sound different each generation?",
-    a: "Headlines and sub-copy are written from a rotating pool of tonal moods — declarative, curious, understated, playful, and so on — filtered against your brand's voice rules. It's designed so two creatives for the same brand don't hand you the same sentence twice.",
+    a: "Headlines and sub-copy rotate through tonal moods — declarative, curious, understated, playful — filtered against your brand voice. Two creatives for the same brand won't hand you the same sentence twice.",
   },
   {
     q: "What happens if a generation comes out the wrong aspect ratio?",
-    a: "It's checked automatically and re-rendered. Wrong-ratio outputs don't reach your history, and you don't get charged a credit for the attempt that failed.",
+    a: "It's checked automatically and re-rendered. Wrong-ratio outputs don't reach your history, and you don't get charged.",
   },
   {
     q: "How do credits work?",
-    a: "One credit per generation attempt. If the attempt fails for any reason — model error, aspect-ratio mismatch, anything — the credit is refunded automatically. You only pay for creatives you actually receive.",
+    a: "One credit per generation attempt. If the attempt fails for any reason, the credit is refunded automatically. You only pay for creatives you actually receive.",
   },
   {
     q: "Can my team share a workspace?",
-    a: "Yes, on the Agency tier and up. Multiple accounts, isolated client Brand Hubs, per-seat credit tracking, and admin tools for moving brands and reviewing usage.",
+    a: "Yes, on the Agency tier and up. Multiple accounts, isolated client Brand Hubs, per-seat credit tracking, admin tools for moving brands and reviewing usage.",
   },
   {
     q: "How do I get access?",
-    a: "Accounts are admin-created right now. Email aditya@teambecause.com or use the contact page and we'll set you up.",
+    a: "Accounts are admin-created right now. Email aditya@teambecause.com or use the contact page.",
   },
 ];
 
@@ -47,31 +48,36 @@ export default function FAQ() {
     <>
       <SEO
         title="FAQ — BDesign"
-        description="Answers to the common questions about BDesign: how references are handled, competitor ads, copy variation, credits, refunds, and team workspaces."
+        description="How references are handled, competitor ads, copy variation, credits, refunds, and team workspaces."
         path="/faq"
         jsonLd={[faqSchema]}
       />
 
       <section className="max-w-3xl mx-auto px-6 py-20">
-        <p className="text-sm font-semibold uppercase tracking-wider text-primary">FAQ</p>
-        <h1 className="mt-3 text-4xl md:text-5xl font-display font-bold">
+        <p className="font-mono-sys text-[11px] uppercase tracking-[0.16em] text-blue-700">faq</p>
+        <h1 className="mt-4 text-[40px] md:text-[52px] font-extrabold tracking-tight leading-[1.05]">
           Frequently asked questions
         </h1>
 
-        <div className="mt-12 space-y-8">
+        <div className="mt-14 space-y-4">
           {faqs.map((f) => (
-            <article key={f.q}>
-              <h2 className="text-xl font-display font-bold">{f.q}</h2>
-              <p className="mt-2 text-muted-foreground leading-relaxed">{f.a}</p>
-            </article>
+            <details key={f.q} className="group rounded-folder border border-line bg-white p-6 hover:border-ink-faint transition open:border-blue-500 open:glow-blue">
+              <summary className="cursor-pointer list-none flex items-start gap-3">
+                <FolderMark size={16} />
+                <span className="flex-1 text-[16.5px] font-bold text-ink">{f.q}</span>
+                <span className="font-mono-sys text-[12px] text-ink-faint group-open:hidden">+</span>
+                <span className="font-mono-sys text-[12px] text-ink-faint hidden group-open:inline">−</span>
+              </summary>
+              <p className="mt-4 pl-7 text-[15px] text-ink-soft leading-relaxed">{f.a}</p>
+            </details>
           ))}
         </div>
 
-        <p className="mt-12 text-sm text-muted-foreground">
+        <p className="mt-12 text-[14px] text-ink-soft">
           Still have questions?{" "}
-          <Link to="/contact" className="underline text-foreground">Contact our team</Link>{" "}
-          or read more about{" "}
-          <Link to="/features" className="underline text-foreground">what's inside BDesign</Link>.
+          <Link to="/contact" className="underline text-ink">Contact our team</Link>{" "}
+          or read{" "}
+          <Link to="/features" className="underline text-ink">what's inside</Link>.
         </p>
       </section>
     </>

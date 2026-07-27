@@ -10,13 +10,13 @@ export default function Trust() {
       />
 
       <section className="max-w-3xl mx-auto px-6 py-20">
-        <p className="text-sm font-semibold uppercase tracking-wider text-primary">Trust Center</p>
-        <h1 className="mt-3 text-4xl md:text-5xl font-display font-bold">
-          Trust, privacy & security
+        <p className="font-mono-sys text-[11px] uppercase tracking-[0.16em] text-blue-700">trust center</p>
+        <h1 className="mt-4 text-[40px] md:text-[52px] font-extrabold tracking-tight leading-[1.05]">
+          Trust, privacy &amp; security
         </h1>
-        <p className="mt-6 text-muted-foreground leading-relaxed">
-          This page is maintained by <strong>Rellow Digital Private Limited</strong> (the company behind BDesign)
-          to answer common security and privacy questions. It is app‑owned editable content — not an independent
+        <p className="mt-6 text-ink-soft leading-relaxed text-[16px]">
+          This page is maintained by <strong className="text-ink">Rellow Digital Private Limited</strong> (the company behind BDesign)
+          to answer common security and privacy questions. It is app-owned editable content — not an independent
           audit or certification.
         </p>
 
