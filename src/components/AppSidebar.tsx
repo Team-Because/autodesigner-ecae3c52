@@ -2,8 +2,8 @@ import { LayoutDashboard, Palette, Sparkles, Clock, LogOut, Users, BarChart3, Ac
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/hooks/useAuth";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { useQueryClient } from "@tanstack/react-query";
+import { useMyProfileFields } from "@/hooks/queries/useProfile";
 import { Badge } from "@/components/ui/badge";
 import {
   Sidebar,
@@ -56,14 +56,7 @@ export function AppSidebar() {
   const queryClient = useQueryClient();
   const [vaulted, setVaulted] = useState<VaultedAccount[]>([]);
 
-  const { data: profile } = useQuery({
-    queryKey: ["my-profile", user?.id],
-    queryFn: async () => {
-      const { data } = await supabase.from("profiles").select("display_name, username").eq("user_id", user!.id).single();
-      return data;
-    },
-    enabled: !!user,
-  });
+  const { data: profile } = useMyProfileFields(["display_name", "username"]);
 
   const displayName = profile?.display_name || profile?.username || user?.email?.split("@")[0] || "";
   const currentUsername = profile?.username || user?.email?.split("@")[0] || "";

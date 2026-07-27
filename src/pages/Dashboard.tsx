@@ -1,16 +1,16 @@
-import { supabase } from "@/integrations/supabase/client";
-import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CreditCard, TrendingUp, Palette, Sparkles, Download, Chrome, MonitorDown, Puzzle, FolderOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { useAuth } from "@/hooks/useAuth";
 import { useMemo, useState } from "react";
 import { format, subMonths, startOfMonth, endOfMonth } from "date-fns";
+import { useMyProfile } from "@/hooks/queries/useProfile";
+import { useMyCredits } from "@/hooks/queries/useCredits";
+import { useMyActiveBrandsMinimal } from "@/hooks/queries/useBrands";
+import { useMyGenerationsMinimal } from "@/hooks/queries/useGenerations";
 
 export default function Dashboard() {
-  const { user } = useAuth();
   const [showExtensionDialog, setShowExtensionDialog] = useState(false);
 
   const downloadExtension = () => {
@@ -26,51 +26,12 @@ export default function Dashboard() {
       .catch(err => alert(err.message));
   };
 
-  const { data: profile } = useQuery({
-    queryKey: ["my-profile", user?.id],
-    queryFn: async () => {
-      const { data } = await supabase.from("profiles").select("*").eq("user_id", user!.id).single();
-      return data;
-    },
-    enabled: !!user,
-  });
+  const { data: profile } = useMyProfile();
+  const { data: credits, isLoading: creditsLoading } = useMyCredits();
+  const { data: brands = [], isLoading: brandsLoading } = useMyActiveBrandsMinimal();
+  const { data: generations = [], isLoading: gensLoading } = useMyGenerationsMinimal();
 
-  const { data: credits, isLoading: creditsLoading } = useQuery({
-    queryKey: ["my-credits", user?.id],
-    queryFn: async () => {
-      const { data } = await supabase.from("user_credits").select("*").eq("user_id", user!.id).single();
-      return data;
-    },
-    enabled: !!user,
-  });
 
-  const { data: brands = [], isLoading: brandsLoading } = useQuery({
-    queryKey: ["brands", user?.id],
-    queryFn: async () => {
-      // Active brands only — archived ones are hidden from dashboard counts.
-      const { data, error } = await supabase
-        .from("brands")
-        .select("id, name")
-        .eq("archived", false)
-        .order("name");
-      if (error) throw error;
-      return data;
-    },
-    enabled: !!user,
-  });
-
-  const { data: generations = [], isLoading: gensLoading } = useQuery({
-    queryKey: ["generations", user?.id],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("generations")
-        .select("id, brand_id, status, created_at")
-        .order("created_at", { ascending: false });
-      if (error) throw error;
-      return data;
-    },
-    enabled: !!user,
-  });
 
   const completedGens = useMemo(() => generations.filter((g) => g.status === "completed"), [generations]);
 
