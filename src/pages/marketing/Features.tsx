@@ -1,97 +1,121 @@
 import { Link } from "react-router-dom";
 import { SEO } from "@/components/SEO";
-import { Button } from "@/components/ui/button";
+import { BrandFolder } from "@/components/marketing/folder/BrandFolder";
+import { ReferenceCard } from "@/components/marketing/folder/ReferenceCard";
+import { ArrowRight } from "lucide-react";
+
+const features = [
+  {
+    tag: "01 · brand hub",
+    h: "One folder per brand.",
+    p: "Logo, palette, the fonts you actually ship, the voice you write in, and a list of things you never want to see. Never-rules matter more than most teams admit — 'no stock handshakes' is often the line between usable and throw-away.",
+  },
+  {
+    tag: "02 · paste & parse",
+    h: "Set up a brand in ten minutes, not an afternoon.",
+    p: "Paste an existing brief — a strategy doc, a Notion page, a rough founder email. We pull out industry, palette, tone, audience, voice rules, and pre-fill the hub. You correct what we got wrong.",
+  },
+  {
+    tag: "03 · reference is a blueprint",
+    h: "The generator never sees the reference.",
+    p: "Analysis reads the shape — focal weight, type placement, negative space — and writes a structural directive. Names, prices, faces, and literal text are stripped there. The image model only sees the directive plus your assets.",
+    highlight: true,
+  },
+  {
+    tag: "04 · four formats",
+    h: "Square, portrait, landscape, story.",
+    p: "Each rendered against its own aspect ratio, not resized from a master. Wrong-ratio outputs are caught and re-rendered before they reach your history.",
+  },
+  {
+    tag: "05 · copy that doesn't repeat",
+    h: "Fresh headline per generation.",
+    p: "Copy is written from a rotating pool of moods — declarative, curious, understated, playful — filtered against your brand voice. Two creatives for the same brand won't hand you the same sentence.",
+  },
+  {
+    tag: "06 · agency workspace",
+    h: "Every client is its own folder.",
+    p: "Isolated Brand Hubs per client, per-seat credit tracking, admin tools for switching context, moving brands, reviewing global usage. Month-end is a query, not a spreadsheet.",
+  },
+];
 
 export default function Features() {
   return (
     <>
       <SEO
         title="Features — BDesign"
-        description="What's actually inside BDesign: the Brand Hub, Paste & Parse setup, reference-as-blueprint analysis, four-format output, mood-rotated copy, and multi-account tooling for agencies."
+        description="Inside BDesign: the Brand Hub, Paste & Parse setup, reference-as-blueprint analysis, four-format output, mood-rotated copy, and agency workspaces."
         path="/features"
       />
-      <section className="max-w-3xl mx-auto px-6 py-20">
-        <p className="text-sm font-semibold uppercase tracking-wider text-primary">Features</p>
-        <h1 className="mt-3 text-4xl md:text-5xl font-display font-bold">
-          What's actually inside.
+
+      <section className="max-w-[1180px] mx-auto px-6 py-20">
+        <p className="font-mono-sys text-[11px] uppercase tracking-[0.16em] text-blue-700">features</p>
+        <h1 className="mt-4 text-[40px] md:text-[52px] font-extrabold tracking-tight leading-[1.05]">
+          A brand hub and a generation engine that{" "}
+          <span className="yellow-underline">talk to each other</span>.
         </h1>
-        <p className="mt-5 text-lg text-muted-foreground">
-          The short version: BDesign is a Brand Hub and a generation engine that agrees to talk to each other. The longer version is below.
+        <p className="mt-5 text-[17px] text-ink-soft max-w-2xl leading-relaxed">
+          The short version. The long version is below.
         </p>
 
-        <div className="mt-14 space-y-14 text-muted-foreground leading-relaxed">
-          {/* Brand Hub */}
-          <article>
-            <h2 className="text-2xl font-display font-bold text-foreground">The Brand Hub</h2>
-            <p className="mt-3">
-              Every brand lives here as a single, editable object — logo files, primary and secondary palette, the fonts you actually use in production (not the ones on the brand book nobody opens), the voice you write in, and a list of things you never want to see. Never‑rules matter more than most teams admit. "No stock photos of handshakes" is often the difference between usable output and something you have to throw away.
-            </p>
-            <p className="mt-3">
-              Brands can be grouped into campaigns, duplicated when you want a variant, and transferred cleanly between accounts on Agency tier.
-            </p>
-          </article>
-
-          {/* Paste & Parse */}
-          <article>
-            <h2 className="text-2xl font-display font-bold text-foreground">Paste & Parse setup</h2>
-            <p className="mt-3">
-              If a brand already has a written brief — a strategy doc, a Notion page, even a rough email from the founder — paste it in. We read it, pull out the industry, palette, tone descriptors, target audience, and starter voice rules, and pre‑fill the hub. You review, correct the parts we got wrong, and hit save. Onboarding a new brand goes from an afternoon to about ten minutes.
-            </p>
-          </article>
-
-          {/* Reference-as-blueprint — the big one */}
-          <article className="p-8 rounded-2xl border-l-4 border-primary bg-card">
-            <h2 className="text-2xl font-display font-bold text-foreground">The reference is a blueprint, not a source</h2>
-            <p className="mt-3">
-              This is the piece worth understanding, because it's the one thing most AI image tools get wrong.
-            </p>
-            <p className="mt-3">
-              When you drop in a reference, the analysis step doesn't hand it to the generator. It reads it — where the focal subject sits, how large the headline is relative to the image, whether type overlaps the subject or steps aside for it, where the logo lock‑up lives, what the negative space is doing — and writes a structural directive from that reading.
-            </p>
-            <p className="mt-3">
-              What it explicitly does not carry forward: the brand name in the reference, any pricing, any faces, any literal text, any product identity. Those are stripped before the directive is written, not after. The generator that renders your final creative never sees the reference image at all. It sees the structural directive, your logo, your palette, your product photography, and your voice. That's it.
-            </p>
-            <p className="mt-3">
-              The practical consequence: you can use a competitor's ad as a reference without producing a knock‑off. What survives is composition. What fills it in is you.
-            </p>
-          </article>
-
-          {/* Four formats */}
-          <article>
-            <h2 className="text-2xl font-display font-bold text-foreground">Four formats from one brief</h2>
-            <p className="mt-3">
-              Square (1:1), portrait (4:5), landscape (16:9), and story (9:16). Each format is rendered against its own aspect ratio, not resized from a master — so the composition genuinely reflows instead of getting cropped weird. Wrong‑ratio outputs are caught and re‑rendered automatically before they reach your history.
-            </p>
-          </article>
-
-          {/* Mood-rotated copy */}
-          <article>
-            <h2 className="text-2xl font-display font-bold text-foreground">Copy that doesn't repeat itself</h2>
-            <p className="mt-3">
-              Headlines and sub‑copy are written fresh per generation from a rotating pool of tonal moods — declarative, curious, understated, playful, benefit‑led, and so on — filtered against the voice rules in your brand. Two creatives for the same brand won't hand you the same sentence twice. The examples you paste into the brand brief are treated as stylistic reference, not templates to recycle.
-            </p>
-          </article>
-
-          {/* Multi-account */}
-          <article>
-            <h2 className="text-2xl font-display font-bold text-foreground">Built for agencies with many clients</h2>
-            <p className="mt-3">
-              Agency accounts get isolated Brand Hubs per client, per‑account credit tracking, and admin tools for switching context, moving brands between accounts, and reviewing global usage. Every generation is tagged to the account and user that ran it, so month‑end reconciliation is a query, not a spreadsheet.
-            </p>
-          </article>
+        {/* How it works — folder journey */}
+        <div className="mt-16 p-8 rounded-folder border border-line bg-paper">
+          <div className="font-mono-sys text-[11px] uppercase tracking-[0.14em] text-ink-faint mb-8">how it works</div>
+          <div className="grid md:grid-cols-3 gap-8 items-center">
+            <div className="flex flex-col items-center">
+              <BrandFolder name="Your brand" size="md" state="empty" />
+              <p className="mt-6 text-[14px] text-ink-soft text-center">1. Set up the brand folder once.</p>
+            </div>
+            <div className="flex flex-col items-center relative">
+              <div className="flex items-center gap-3">
+                <ReferenceCard label="reference" scatter="coral" width={80} height={110} tilt={-6} />
+                <ArrowRight className="h-5 w-5 text-ink-faint" />
+                <BrandFolder name="Receiving" size="sm" state="receiving" palette={["#3D63FF", "#FFC93C", "#14162B"]} />
+              </div>
+              <p className="mt-6 text-[14px] text-ink-soft text-center">2. Drop any reference in.</p>
+            </div>
+            <div className="flex flex-col items-center">
+              <div className="flex items-center gap-2">
+                <BrandFolder name="Ready" size="sm" palette={["#3D63FF", "#FFC93C", "#14162B"]} />
+                <ArrowRight className="h-5 w-5 text-ink-faint" />
+                <div
+                  className="rounded-field bg-white border-2 border-blue-500 shadow-sm flex items-center justify-center"
+                  style={{ width: 96, height: 128 }}
+                >
+                  <span className="font-mono-sys text-[10px] text-blue-700">on-brand</span>
+                </div>
+              </div>
+              <p className="mt-6 text-[14px] text-ink-soft text-center">3. A creative in your brand comes out.</p>
+            </div>
+          </div>
         </div>
 
-        <div className="mt-16 p-8 rounded-2xl border border-border bg-accent/40">
-          <h2 className="text-2xl font-display font-bold text-foreground">See it in your team's workflow.</h2>
-          <p className="mt-2">
-            Want a walkthrough?{" "}
-            <Link to="/contact" className="underline text-foreground">Book a demo</Link>{" "}
-            or{" "}
-            <Link to="/pricing" className="underline text-foreground">review pricing</Link>.
-          </p>
-          <div className="mt-5 flex gap-3">
-            <Button asChild><Link to="/contact">Request access</Link></Button>
-            <Button asChild variant="outline"><Link to="/pricing">See pricing</Link></Button>
+        <div className="mt-16 space-y-6">
+          {features.map((f) => (
+            <article
+              key={f.tag}
+              className={`p-7 rounded-folder border bg-white transition ${
+                f.highlight ? "border-blue-500 glow-blue" : "border-line hover:border-ink-faint"
+              }`}
+            >
+              <div className="font-mono-sys text-[11px] uppercase tracking-[0.14em] text-blue-700">{f.tag}</div>
+              <h2 className="mt-3 text-[22px] font-bold tracking-tight text-ink">{f.h}</h2>
+              <p className="mt-3 text-[15.5px] text-ink-soft leading-relaxed max-w-3xl">{f.p}</p>
+            </article>
+          ))}
+        </div>
+
+        <div className="mt-16 p-8 rounded-folder border border-line bg-paper flex items-center justify-between flex-wrap gap-4">
+          <div>
+            <h2 className="text-[22px] font-bold tracking-tight">See it in your team's workflow.</h2>
+            <p className="mt-1 text-[14px] text-ink-soft">Want a walkthrough? Book a demo or review pricing.</p>
+          </div>
+          <div className="flex gap-3">
+            <Link to="/contact" className="pill inline-flex items-center bg-blue-500 text-white text-[14px] font-semibold px-5 py-2.5 glow-blue hover:brightness-110 transition">
+              Request access
+            </Link>
+            <Link to="/pricing" className="pill inline-flex items-center border border-line bg-white text-ink text-[14px] font-semibold px-5 py-2.5 hover:border-ink-faint transition">
+              See pricing
+            </Link>
           </div>
         </div>
       </section>

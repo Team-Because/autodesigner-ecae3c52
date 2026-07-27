@@ -29,43 +29,45 @@ export default function Contact() {
     <>
       <SEO
         title="Contact BDesign — Request Access for Your Team"
-        description="Talk to the Because team about BDesign. Request access, ask about pricing, or book a walkthrough for your marketing agency or brand team."
+        description="Talk to the Because team about BDesign. Request access, ask about pricing, or book a walkthrough."
         path="/contact"
         jsonLd={[contactSchema]}
       />
 
-      <section className="max-w-4xl mx-auto px-6 py-20">
-        <p className="text-sm font-semibold uppercase tracking-wider text-primary">Contact</p>
-        <h1 className="mt-3 text-4xl md:text-5xl font-display font-bold">
-          Talk to our team about BDesign.
+      <section className="max-w-[1180px] mx-auto px-6 py-20">
+        <p className="font-mono-sys text-[11px] uppercase tracking-[0.16em] text-blue-700">contact</p>
+        <h1 className="mt-4 text-[40px] md:text-[52px] font-extrabold tracking-tight leading-[1.05]">
+          Talk to the{" "}
+          <span className="yellow-underline">Because</span>{" "}
+          team.
         </h1>
-        <p className="mt-5 text-lg text-muted-foreground max-w-2xl">
-          Whether you want a demo, a price quote, or a workspace for your agency — drop us a note and we'll get back within one business day.
+        <p className="mt-5 text-[17px] text-ink-soft max-w-2xl leading-relaxed">
+          Demo, quote, or a workspace for your agency — drop us a note and we'll get back within one business day.
         </p>
 
-        <div className="mt-12 grid md:grid-cols-2 gap-6">
-          <article className="p-6 rounded-2xl border border-border bg-card">
-            <Mail className="h-5 w-5 text-primary" aria-hidden />
-            <h2 className="mt-3 text-lg font-semibold">Email</h2>
-            <p className="text-sm text-muted-foreground">For business enquiries and access requests.</p>
-            <a href="mailto:aditya@teambecause.com" className="mt-3 inline-block text-primary underline">
+        <div className="mt-14 grid md:grid-cols-2 gap-5">
+          <article className="p-7 rounded-folder border border-line bg-white hover:border-blue-500 transition">
+            <Mail className="h-5 w-5 text-blue-500" aria-hidden />
+            <h2 className="mt-4 text-[17px] font-bold">Email</h2>
+            <p className="text-[13.5px] text-ink-faint mt-1">Business enquiries &amp; access.</p>
+            <a href="mailto:aditya@teambecause.com" className="mt-3 inline-block text-blue-700 underline text-[15px]">
               aditya@teambecause.com
             </a>
           </article>
 
-          <article className="p-6 rounded-2xl border border-border bg-card">
-            <Phone className="h-5 w-5 text-primary" aria-hidden />
-            <h2 className="mt-3 text-lg font-semibold">Phone</h2>
-            <p className="text-sm text-muted-foreground">Mon–Fri, 10:00–19:00 IST.</p>
-            <a href="tel:+919879632532" className="mt-3 inline-block text-primary underline">
+          <article className="p-7 rounded-folder border border-line bg-white hover:border-blue-500 transition">
+            <Phone className="h-5 w-5 text-blue-500" aria-hidden />
+            <h2 className="mt-4 text-[17px] font-bold">Phone</h2>
+            <p className="text-[13.5px] text-ink-faint mt-1">Mon–Fri, 10:00–19:00 IST.</p>
+            <a href="tel:+919879632532" className="mt-3 inline-block text-blue-700 underline text-[15px]">
               +91 98796 32532
             </a>
           </article>
 
-          <article className="p-6 rounded-2xl border border-border bg-card md:col-span-2">
-            <MapPin className="h-5 w-5 text-primary" aria-hidden />
-            <h2 className="mt-3 text-lg font-semibold">Office</h2>
-            <address className="not-italic mt-2 text-sm text-muted-foreground leading-relaxed">
+          <article className="p-7 rounded-folder border border-line bg-white md:col-span-2">
+            <MapPin className="h-5 w-5 text-blue-500" aria-hidden />
+            <h2 className="mt-4 text-[17px] font-bold">Office</h2>
+            <address className="not-italic mt-2 text-[14.5px] text-ink-soft leading-relaxed">
               Because — Branding &amp; Marketing Agency<br />
               Rellow Digital Private Limited<br />
               6th Floor, Sheth works, Adani Shantigram, Adani Circle, B/S Lake,<br />
@@ -74,12 +76,11 @@ export default function Contact() {
           </article>
         </div>
 
-        <p className="mt-12 text-sm text-muted-foreground">
+        <p className="mt-12 text-[14px] text-ink-soft">
           Prefer to learn more first? See{" "}
-          <Link to="/features" className="underline text-foreground">all features</Link>,{" "}
-          <Link to="/pricing" className="underline text-foreground">pricing</Link>,{" "}
-          or browse the{" "}
-          <Link to="/faq" className="underline text-foreground">FAQ</Link>.
+          <Link to="/features" className="underline text-ink">features</Link>,{" "}
+          <Link to="/pricing" className="underline text-ink">pricing</Link>, or the{" "}
+          <Link to="/faq" className="underline text-ink">FAQ</Link>.
         </p>
       </section>
     </>
