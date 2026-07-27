@@ -1,5 +1,3 @@
-import { supabase } from "@/integrations/supabase/client";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,7 +31,11 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { Plus, Pencil, Trash2, FolderPlus, Folder, MoreVertical, X, Copy, Loader2, Search, ChevronDown, Sparkles, Archive, ArchiveRestore, Eye, EyeOff, GitMerge, ArrowRight } from "lucide-react";
+import {
+  Plus, Pencil, Trash2, FolderPlus, Folder, MoreVertical, X, Copy,
+  Loader2, Search, ChevronDown, Sparkles, Archive, ArchiveRestore,
+  Eye, EyeOff, GitMerge, ArrowRight,
+} from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -43,16 +45,32 @@ import {
 } from "@/components/ui/select";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { useState, useMemo, useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useActivityLog } from "@/hooks/useActivityLog";
-import { useState, useMemo } from "react";
+import { useMyBrands, useBrandGenerationCount } from "@/hooks/queries/useBrands";
+import { useMyCampaigns } from "@/hooks/queries/useCampaigns";
+import { useMyBrandAssetCounts } from "@/hooks/queries/useBrandAssetCounts";
+import {
+  useArchiveBrand,
+  useUnarchiveBrand,
+  useAssignBrandCampaign,
+  useDuplicateBrand,
+  useMergeBrand,
+} from "@/hooks/mutations/useBrandMutations";
+import {
+  useCreateCampaign,
+  useRenameCampaign,
+  useDeleteCampaign,
+} from "@/hooks/mutations/useCampaignMutations";
 import { scoreBrandHealth } from "@/lib/brandHealth";
+import type { Brand } from "@/lib/db";
 
 export default function BrandHub() {
   const { user } = useAuth();
   const { log } = useActivityLog();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
+
   const [newGroupName, setNewGroupName] = useState("");
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [renameId, setRenameId] = useState<string | null>(null);
@@ -65,239 +83,170 @@ export default function BrandHub() {
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string; type: "group" } | null>(null);
   const [mergeSource, setMergeSource] = useState<{ id: string; name: string } | null>(null);
   const [mergeDestId, setMergeDestId] = useState<string>("");
-  const [merging, setMerging] = useState(false);
-  const [mergeCreativeCount, setMergeCreativeCount] = useState<number | null>(null);
 
-  const { data: brands = [], isLoading: brandsLoading } = useQuery({
-    queryKey: ["brands", user?.id],
-    queryFn: async () => {
-      const { data, error } = await supabase.from("brands").select("*").order("created_at", { ascending: false });
-      if (error) throw error;
-      return data;
-    },
-    enabled: !!user,
-  });
+  const { data: brands = [], isLoading: brandsLoading } = useMyBrands();
+  const { data: groups = [], isLoading: groupsLoading } = useMyCampaigns();
+  const { data: assetCounts = {} } = useMyBrandAssetCounts();
 
-  const { data: groups = [], isLoading: groupsLoading } = useQuery({
-    queryKey: ["campaigns", user?.id],
-    queryFn: async () => {
-      const { data, error } = await supabase.from("campaigns").select("*").order("name", { ascending: true });
-      if (error) throw error;
-      return data;
-    },
-    enabled: !!user,
-  });
+  // Merge-dialog: count creatives on the source brand so users see what moves.
+  const { data: mergeCreativeCount = null } = useBrandGenerationCount(mergeSource?.id);
 
-  // Per-brand asset counts for the Brand Health chip on each card.
-  const { data: assetCounts = {} } = useQuery<Record<string, { total: number; tagged: number }>>({
-    queryKey: ["brand-asset-counts", user?.id],
-    queryFn: async () => {
-      const { data, error } = await supabase.from("brand_assets").select("brand_id, label");
-      if (error) throw error;
-      const counts: Record<string, { total: number; tagged: number }> = {};
-      for (const a of (data || []) as { brand_id: string; label: string | null }[]) {
-        if (!counts[a.brand_id]) counts[a.brand_id] = { total: 0, tagged: 0 };
-        counts[a.brand_id].total++;
-        if (a.label && a.label !== "Other:") counts[a.brand_id].tagged++;
-      }
-      return counts;
-    },
-    enabled: !!user,
-  });
-  useMemo(() => {
+  const archiveMutation = useArchiveBrand();
+  const unarchiveMutation = useUnarchiveBrand();
+  const assignGroupMutation = useAssignBrandCampaign();
+  const duplicateMutation = useDuplicateBrand();
+  const mergeMutation = useMergeBrand();
+  const createCampaignMutation = useCreateCampaign();
+  const renameCampaignMutation = useRenameCampaign();
+  const deleteCampaignMutation = useDeleteCampaign();
+
+  useEffect(() => {
     if (groups.length > 0 && Object.keys(expandedGroups).length === 0) {
       const initial: Record<string, boolean> = {};
       groups.forEach((g) => { initial[g.id] = true; });
       setExpandedGroups(initial);
     }
-  }, [groups]);
+  }, [groups, expandedGroups]);
 
   const toggleGroup = (groupId: string) => {
     setExpandedGroups((prev) => ({ ...prev, [groupId]: !prev[groupId] }));
   };
 
-  const handleArchive = async (id: string, name: string) => {
-    const { error } = await supabase.from("brands").update({ archived: true }).eq("id", id);
-    if (error) {
-      toast.error("Failed to archive brand.");
-    } else {
-      toast.success(`"${name}" archived. Generation history is preserved.`);
-      log("brand.archived", "brand", id, { name });
-      queryClient.invalidateQueries({ queryKey: ["brands"] });
-    }
+  const handleArchive = (id: string, name: string) => {
+    archiveMutation.mutate(id, {
+      onSuccess: () => {
+        toast.success(`"${name}" archived. Generation history is preserved.`);
+        log("brand.archived", "brand", id, { name });
+      },
+      onError: () => toast.error("Failed to archive brand."),
+    });
   };
 
-  const handleUnarchive = async (id: string, name: string) => {
-    const { error } = await supabase.from("brands").update({ archived: false }).eq("id", id);
-    if (error) {
-      toast.error("Failed to restore brand.");
-    } else {
-      toast.success(`"${name}" restored.`);
-      log("brand.unarchived", "brand", id, { name });
-      queryClient.invalidateQueries({ queryKey: ["brands"] });
-    }
+  const handleUnarchive = (id: string, name: string) => {
+    unarchiveMutation.mutate(id, {
+      onSuccess: () => {
+        toast.success(`"${name}" restored.`);
+        log("brand.unarchived", "brand", id, { name });
+      },
+      onError: () => toast.error("Failed to restore brand."),
+    });
   };
 
-  const openMergeDialog = async (id: string, name: string) => {
+  const openMergeDialog = (id: string, name: string) => {
     setMergeSource({ id, name });
     setMergeDestId("");
-    setMergeCreativeCount(null);
-    // Fetch creative count for this brand so we can show it in the dialog.
-    const { count } = await supabase
-      .from("generations")
-      .select("id", { count: "exact", head: true })
-      .eq("brand_id", id);
-    setMergeCreativeCount(count ?? 0);
   };
 
-  const handleMerge = async () => {
+  const handleMerge = () => {
     if (!mergeSource || !mergeDestId || mergeDestId === mergeSource.id) return;
-    setMerging(true);
-    try {
-      const destBrand = brands.find((b) => b.id === mergeDestId);
-      if (!destBrand) throw new Error("Destination brand not found");
-
-      // Atomic transactional merge: reassigns generations + archives source
-      // in a single DB transaction so concurrent edits can't leave the
-      // source brand active with no creatives (or vice versa).
-      const { data, error: rpcErr } = await supabase.rpc("merge_brand" as any, {
-        _source_brand_id: mergeSource.id,
-        _destination_brand_id: mergeDestId,
-      });
-      if (rpcErr) throw rpcErr;
-
-      const transferred =
-        (data as any)?.creatives_transferred ?? mergeCreativeCount ?? 0;
-
-      log("brand.merged", "brand", mergeSource.id, {
-        source_name: mergeSource.name,
-        destination_id: mergeDestId,
-        destination_name: destBrand.name,
-        creatives_transferred: transferred,
-      });
-
-      toast.success(
-        `Merged "${mergeSource.name}" into "${destBrand.name}". ${transferred} creative${transferred === 1 ? "" : "s"} transferred.`
-      );
-      queryClient.invalidateQueries({ queryKey: ["brands"] });
-      queryClient.invalidateQueries({ queryKey: ["generations"] });
-      setMergeSource(null);
-      setMergeDestId("");
-      setMergeCreativeCount(null);
-    } catch (err: any) {
-      toast.error(err.message || "Failed to merge brands.");
-    } finally {
-      setMerging(false);
+    const destBrand = brands.find((b) => b.id === mergeDestId);
+    if (!destBrand) {
+      toast.error("Destination brand not found");
+      return;
     }
+    mergeMutation.mutate(
+      { sourceBrandId: mergeSource.id, destinationBrandId: mergeDestId },
+      {
+        onSuccess: ({ creatives_transferred }) => {
+          const transferred = creatives_transferred || (mergeCreativeCount ?? 0);
+          log("brand.merged", "brand", mergeSource.id, {
+            source_name: mergeSource.name,
+            destination_id: mergeDestId,
+            destination_name: destBrand.name,
+            creatives_transferred: transferred,
+          });
+          toast.success(
+            `Merged "${mergeSource.name}" into "${destBrand.name}". ${transferred} creative${transferred === 1 ? "" : "s"} transferred.`
+          );
+          setMergeSource(null);
+          setMergeDestId("");
+        },
+        onError: (err: Error) => toast.error(err.message || "Failed to merge brands."),
+      },
+    );
   };
 
-  const handleDuplicate = async (brandId: string) => {
+  const handleDuplicate = (brandId: string) => {
     if (!user) return;
     setDuplicatingId(brandId);
-    try {
-      const { data: original, error: fetchErr } = await supabase.from("brands").select("*").eq("id", brandId).single();
-      if (fetchErr || !original) throw new Error("Failed to fetch brand");
-
-      const { data: originalAssets = [] } = await supabase.from("brand_assets").select("*").eq("brand_id", brandId);
-
-      const { data: newBrand, error: insertErr } = await supabase
-        .from("brands")
-        .insert({
-          name: `${original.name} (Copy)`,
-          user_id: user.id,
-          logo_url: original.logo_url,
-          primary_color: original.primary_color,
-          secondary_color: original.secondary_color,
-          extra_colors: original.extra_colors,
-          brand_voice_rules: original.brand_voice_rules,
-          negative_prompts: original.negative_prompts,
-          brand_brief: original.brand_brief,
-          campaign_id: original.campaign_id,
-        })
-        .select()
-        .single();
-      if (insertErr || !newBrand) throw new Error("Failed to duplicate brand");
-
-      if (originalAssets && originalAssets.length > 0) {
-        const assetCopies = originalAssets.map((a: any) => ({
-          brand_id: newBrand.id,
-          user_id: user.id,
-          image_url: a.image_url,
-          label: a.label,
-        }));
-        await supabase.from("brand_assets").insert(assetCopies);
-      }
-
-      log("brand.duplicated", "brand", newBrand.id, { source_brand_id: brandId, source_name: original.name });
-      toast.success(`"${original.name}" duplicated successfully.`);
-      queryClient.invalidateQueries({ queryKey: ["brands"] });
-      navigate(`/brands/${newBrand.id}/edit`);
-    } catch (err: any) {
-      toast.error(err.message || "Failed to duplicate brand.");
-    } finally {
-      setDuplicatingId(null);
-    }
+    const original = brands.find((b) => b.id === brandId);
+    duplicateMutation.mutate(
+      { brandId, userId: user.id },
+      {
+        onSuccess: (newBrand) => {
+          log("brand.duplicated", "brand", newBrand.id, {
+            source_brand_id: brandId,
+            source_name: original?.name,
+          });
+          toast.success(`"${original?.name ?? "Brand"}" duplicated successfully.`);
+          navigate(`/brands/${newBrand.id}/edit`);
+        },
+        onError: (err: Error) => toast.error(err.message || "Failed to duplicate brand."),
+        onSettled: () => setDuplicatingId(null),
+      },
+    );
   };
 
-  const handleCreateGroup = async () => {
-    if (!newGroupName.trim() || !user) return;
-    const { data, error } = await supabase.from("campaigns").insert({ name: newGroupName.trim(), user_id: user.id }).select().single();
-    if (error) {
-      toast.error("Failed to create group.");
-    } else {
-      toast.success(`Group "${newGroupName.trim()}" created.`);
-      log("group.created", "group", data?.id, { name: newGroupName.trim() });
-      setNewGroupName("");
-      setCreateDialogOpen(false);
-      queryClient.invalidateQueries({ queryKey: ["campaigns"] });
-    }
+  const handleCreateGroup = () => {
+    const name = newGroupName.trim();
+    if (!name || !user) return;
+    createCampaignMutation.mutate(
+      { name, userId: user.id },
+      {
+        onSuccess: (data) => {
+          toast.success(`Group "${name}" created.`);
+          log("group.created", "group", data.id, { name });
+          setNewGroupName("");
+          setCreateDialogOpen(false);
+        },
+        onError: () => toast.error("Failed to create group."),
+      },
+    );
   };
 
-  const handleDeleteGroup = async (groupId: string, groupName: string) => {
-    await supabase.from("brands").update({ campaign_id: null }).eq("campaign_id", groupId);
-    const { error } = await supabase.from("campaigns").delete().eq("id", groupId);
-    if (error) {
-      toast.error("Failed to delete group.");
-    } else {
-      toast.success(`Group "${groupName}" deleted.`);
-      log("group.deleted", "group", groupId, { name: groupName });
-      queryClient.invalidateQueries({ queryKey: ["campaigns", "brands"] });
-    }
+  const handleDeleteGroup = (groupId: string, groupName: string) => {
+    deleteCampaignMutation.mutate(groupId, {
+      onSuccess: () => {
+        toast.success(`Group "${groupName}" deleted.`);
+        log("group.deleted", "group", groupId, { name: groupName });
+      },
+      onError: () => toast.error("Failed to delete group."),
+    });
   };
 
-  const handleRenameGroup = async () => {
-    if (!renameId || !renameValue.trim()) return;
-    const { error } = await supabase.from("campaigns").update({ name: renameValue.trim() }).eq("id", renameId);
-    if (error) {
-      toast.error("Failed to rename group.");
-    } else {
-      toast.success("Group renamed.");
-      log("group.renamed", "group", renameId, { new_name: renameValue.trim() });
-      setRenameId(null);
-      setRenameValue("");
-      queryClient.invalidateQueries({ queryKey: ["campaigns"] });
-    }
+  const handleRenameGroup = () => {
+    const name = renameValue.trim();
+    if (!renameId || !name) return;
+    renameCampaignMutation.mutate(
+      { id: renameId, name },
+      {
+        onSuccess: () => {
+          toast.success("Group renamed.");
+          log("group.renamed", "group", renameId, { new_name: name });
+          setRenameId(null);
+          setRenameValue("");
+        },
+        onError: () => toast.error("Failed to rename group."),
+      },
+    );
   };
 
-  const handleAssignGroup = async (brandId: string, groupId: string | null) => {
-    const { error } = await supabase.from("brands").update({ campaign_id: groupId }).eq("id", brandId);
-    if (error) {
-      toast.error("Failed to assign group.");
-    } else {
-      queryClient.invalidateQueries({ queryKey: ["brands"] });
-    }
+  const handleAssignGroup = (brandId: string, groupId: string | null) => {
+    assignGroupMutation.mutate(
+      { brandId, campaignId: groupId },
+      { onError: () => toast.error("Failed to assign group.") },
+    );
   };
 
   const filteredBrands = useMemo(() => {
-    // Hide archived brands unless the user explicitly opts in.
-    const visible = brands.filter((b) => showArchived ? (b as any).archived : !(b as any).archived);
+    const visible = brands.filter((b) => showArchived ? b.archived : !b.archived);
     if (!searchQuery.trim()) return visible;
     const q = searchQuery.toLowerCase();
     return visible.filter((b) => b.name.toLowerCase().includes(q));
   }, [brands, searchQuery, showArchived]);
 
   const archivedCount = useMemo(
-    () => brands.filter((b) => (b as any).archived).length,
+    () => brands.filter((b) => b.archived).length,
     [brands]
   );
 
@@ -308,8 +257,9 @@ export default function BrandHub() {
   }));
 
   const isLoading = brandsLoading || groupsLoading;
+  const merging = mergeMutation.isPending;
 
-  const BrandCard = ({ brand }: { brand: typeof brands[0] }) => (
+  const BrandCard = ({ brand }: { brand: Brand }) => (
     <Card className="overflow-hidden hover:shadow-lg hover:-translate-y-0.5 transition-all group">
       <CardContent className="p-5">
         <div className="flex items-start gap-3">
@@ -325,7 +275,7 @@ export default function BrandHub() {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1.5">
               <h3 className="font-display font-semibold text-sm text-foreground truncate">{brand.name}</h3>
-              {(brand as any).archived && (
+              {brand.archived && (
                 <span className="inline-flex items-center gap-1 rounded-full bg-muted px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground border border-border shrink-0">
                   <Archive className="h-2.5 w-2.5" /> Archived
                 </span>
@@ -362,7 +312,7 @@ export default function BrandHub() {
                   <DropdownMenuSeparator />
                 </>
               )}
-              {(brand as any).archived ? (
+              {brand.archived ? (
                 <DropdownMenuItem onClick={() => handleUnarchive(brand.id, brand.name)} className="gap-2">
                   <ArchiveRestore className="h-3.5 w-3.5" /> Restore brand
                 </DropdownMenuItem>
@@ -392,7 +342,7 @@ export default function BrandHub() {
             voiceRules: brand.brand_voice_rules || "",
             visualNevers: brand.negative_prompts || "",
             contentNevers: brand.negative_prompts || "",
-            industry: (brand as any).industry || null,
+            industry: brand.industry || null,
           });
           return (
             <div className={`mt-3 inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-medium ${
@@ -461,7 +411,7 @@ export default function BrandHub() {
                   onKeyDown={(e) => e.key === "Enter" && handleCreateGroup()}
                   className="rounded-xl"
                 />
-                <Button onClick={handleCreateGroup} disabled={!newGroupName.trim()} className="rounded-xl">Create</Button>
+                <Button onClick={handleCreateGroup} disabled={!newGroupName.trim() || createCampaignMutation.isPending} className="rounded-xl">Create</Button>
               </div>
             </DialogContent>
           </Dialog>
@@ -498,7 +448,6 @@ export default function BrandHub() {
         </div>
       ) : (
         <>
-          {/* Grouped brands with collapsible sections */}
           {groupedBrands.filter((g) => g.brands.length > 0).map((group) => (
             <Collapsible
               key={group.id}
@@ -563,7 +512,6 @@ export default function BrandHub() {
             </Collapsible>
           ))}
 
-          {/* Ungrouped brands */}
           {ungroupedBrands.length > 0 && (
             <div className="space-y-3">
               {groupedBrands.some((g) => g.brands.length > 0) && (
@@ -657,7 +605,6 @@ export default function BrandHub() {
         if (!open && !merging) {
           setMergeSource(null);
           setMergeDestId("");
-          setMergeCreativeCount(null);
         }
       }}
     >
@@ -693,18 +640,13 @@ export default function BrandHub() {
               </SelectTrigger>
               <SelectContent>
                 {brands
-                  .filter(
-                    (b) =>
-                      b.id !== mergeSource?.id && !(b as any).archived
-                  )
+                  .filter((b) => b.id !== mergeSource?.id && !b.archived)
                   .map((b) => (
                     <SelectItem key={b.id} value={b.id}>
                       {b.name}
                     </SelectItem>
                   ))}
-                {brands.filter(
-                  (b) => b.id !== mergeSource?.id && !(b as any).archived
-                ).length === 0 && (
+                {brands.filter((b) => b.id !== mergeSource?.id && !b.archived).length === 0 && (
                   <div className="px-2 py-1.5 text-xs text-muted-foreground">
                     No other active brands available.
                   </div>
@@ -731,7 +673,6 @@ export default function BrandHub() {
             onClick={() => {
               setMergeSource(null);
               setMergeDestId("");
-              setMergeCreativeCount(null);
             }}
           >
             Cancel
