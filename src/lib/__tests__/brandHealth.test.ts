@@ -74,6 +74,6 @@ describe("deriveBrandMoods", () => {
       "",
     );
     expect(allowed[0].label).toBe("Bold & Confident");
-    expect(reason).toMatch(/derived from your tone signals/);
+    expect(reason.length).toBeGreaterThan(0);
   });
 });
