@@ -14,17 +14,8 @@ const NOT_YET_MIGRATED = [
   "src/pages/Studio.tsx",
   "src/pages/BrandForm.tsx",
   "src/pages/History.tsx",
-  "src/pages/Login.tsx",
-  "src/pages/AdminBrands.tsx",
-  "src/pages/AdminDashboard.tsx",
   "src/pages/AdminHistory.tsx",
-  "src/pages/AdminLogs.tsx",
   "src/pages/AdminUsers.tsx",
-  "src/components/DashboardLayout.tsx",
-  "src/components/ActiveAccountBadge.tsx",
-  "src/hooks/useActivityLog.ts",
-  "src/hooks/useIsAdmin.ts",
-  "src/lib/accountVault.ts",
 ];
 
 const restrictedImportsRule = [
@@ -66,8 +57,8 @@ export default tseslint.config(
       "no-restricted-imports": restrictedImportsRule,
     },
   },
-  // Services, the auto-generated Supabase client, and the DAL itself are
-  // allowed to import the client freely.
+  // Services, the auto-generated Supabase client, the DAL itself, useAuth,
+  // and accountVault (session storage) are allowed to import the client.
   {
     files: [
       "src/services/**/*.{ts,tsx}",

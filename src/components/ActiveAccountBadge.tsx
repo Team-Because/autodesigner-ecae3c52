@@ -1,7 +1,6 @@
 import { UserCircle } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
-import { supabase } from "@/integrations/supabase/client";
+import { useMyProfileFields } from "@/hooks/queries/useProfile";
 import { cn } from "@/lib/utils";
 
 interface ActiveAccountBadgeProps {
@@ -18,19 +17,7 @@ interface ActiveAccountBadgeProps {
  */
 export function ActiveAccountBadge({ variant = "full", className }: ActiveAccountBadgeProps) {
   const { user } = useAuth();
-
-  const { data: profile } = useQuery({
-    queryKey: ["my-profile", user?.id],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("profiles")
-        .select("display_name, username")
-        .eq("user_id", user!.id)
-        .single();
-      return data;
-    },
-    enabled: !!user,
-  });
+  const { data: profile } = useMyProfileFields(["display_name", "username"]);
 
   if (!user) return null;
 

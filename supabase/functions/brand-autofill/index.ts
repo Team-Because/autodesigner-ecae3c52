@@ -2,13 +2,10 @@
 // Returns structured JSON the client merges into the BrandForm.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
+import { handleOptions, corsHeaders } from "../_shared/cors.ts";
+import { jsonResponse, errorResponse } from "../_shared/http.ts";
+import { verifyUser } from "../_shared/auth.ts";
+import { isSafePublicHttpsUrl } from "../_shared/ssrf.ts";
 
 const LOVABLE_AI_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 
@@ -17,8 +14,8 @@ const INDUSTRIES = [
   "Technology", "Food & Beverage", "Automotive", "Hospitality", "Finance",
 ];
 
-// Mirrors BrandForm.tsx INDUSTRY_CATEGORIES. Kept here so the AI knows the
-// allowed tag vocabulary per industry. "Other: ..." is always allowed.
+// Mirrors src/lib/industries.ts. Kept here (rather than imported) because
+// Deno edge functions can't import from `src/`. If you change one, change both.
 const INDUSTRY_CATEGORIES: Record<string, string[]> = {
   "Real Estate": ["Logo", "Elevation", "Interior", "Exterior", "Amenity", "Lifestyle", "RERA QR", "Pattern/Texture", "Render"],
   "Education": ["Logo", "Campus", "Classroom", "Student Life", "Faculty", "Lab", "Library", "Playground", "Graduation", "Sports"],
@@ -31,30 +28,6 @@ const INDUSTRY_CATEGORIES: Record<string, string[]> = {
   "Hospitality": ["Logo", "Room/Suite", "Amenity", "Dining", "Spa/Wellness", "Pool", "Lobby", "Aerial View", "Guest Experience", "Lifestyle"],
   "Finance": ["Logo", "Data Visualization", "Office/Branch", "Card/Product", "Mobile Banking", "Investment Chart", "Team Photo", "Lifestyle", "Banner", "Report"],
 };
-
-// ─── Lightweight URL scraping ───
-// Pulls title/description/og tags + first H1/H2 + visible body text snippet.
-// We deliberately avoid heavy HTML parsers — regex is fine for meta tags.
-function isSafePublicHttpsUrl(raw: string): boolean {
-  try {
-    const u = new URL(raw);
-    if (u.protocol !== "https:") return false;
-    const h = u.hostname.toLowerCase();
-    // Block private / loopback / link-local / cloud-metadata hosts
-    if (
-      h === "localhost" ||
-      h.endsWith(".localhost") ||
-      h === "0.0.0.0" ||
-      /^127\./.test(h) ||
-      /^10\./.test(h) ||
-      /^192\.168\./.test(h) ||
-      /^169\.254\./.test(h) ||
-      /^172\.(1[6-9]|2\d|3[0-1])\./.test(h) ||
-      h === "metadata.google.internal"
-    ) return false;
-    return true;
-  } catch { return false; }
-}
 
 async function scrapeUrl(url: string): Promise<{
   title: string;
@@ -81,7 +54,7 @@ async function scrapeUrl(url: string): Promise<{
     const description =
       pick(/<meta\s+name=["']description["']\s+content=["']([^"']+)["']/i) ||
       pick(/<meta\s+property=["']og:description["']\s+content=["']([^"']+)["']/i);
-    let ogImage =
+    let ogImage: string | null =
       pick(/<meta\s+property=["']og:image["']\s+content=["']([^"']+)["']/i) ||
       pick(/<meta\s+name=["']twitter:image["']\s+content=["']([^"']+)["']/i);
     if (ogImage && !ogImage.startsWith("http")) {
@@ -92,7 +65,6 @@ async function scrapeUrl(url: string): Promise<{
       }
     }
 
-    // Headlines & first 2000 chars of visible text — strip scripts/styles/tags.
     const stripped = html
       .replace(/<script[\s\S]*?<\/script>/gi, " ")
       .replace(/<style[\s\S]*?<\/style>/gi, " ")
@@ -125,7 +97,6 @@ async function scrapeUrl(url: string): Promise<{
   }
 }
 
-// Convert a remote image URL to a data URL the AI can ingest. Caps at ~5MB.
 async function urlToDataUrl(url: string): Promise<string | null> {
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
@@ -157,11 +128,7 @@ const TOOL_SCHEMA = {
     parameters: {
       type: "object",
       properties: {
-        industry: {
-          type: "string",
-          enum: INDUSTRIES,
-          description: "Best-fit industry from the allowed list.",
-        },
+        industry: { type: "string", enum: INDUSTRIES, description: "Best-fit industry from the allowed list." },
         primary_color: { type: "string", description: "Hex color #RRGGBB. Most prominent brand color (logo / accent)." },
         secondary_color: { type: "string", description: "Hex color #RRGGBB. Supporting / background color." },
         extra_colors: {
@@ -197,11 +164,7 @@ const TOOL_SCHEMA = {
             additionalProperties: false,
           },
         },
-        confidence: {
-          type: "string",
-          enum: ["high", "medium", "low"],
-          description: "How confident the AI is. Low = user should review heavily.",
-        },
+        confidence: { type: "string", enum: ["high", "medium", "low"], description: "How confident the AI is. Low = user should review heavily." },
       },
       required: [
         "industry", "primary_color", "secondary_color",
@@ -220,57 +183,27 @@ interface AnalyzeBody {
 }
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  const preflight = handleOptions(req);
+  if (preflight) return preflight;
 
   try {
-    // Auth: actually verify the JWT — not just check the header prefix.
-    const authHeader = req.headers.get("Authorization") || "";
-    if (!authHeader.toLowerCase().startsWith("bearer ")) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-    const callerClient = createClient(supabaseUrl, anonKey, {
-      global: { headers: { Authorization: authHeader } },
-    });
-    const { data: { user: caller }, error: authErr } = await callerClient.auth.getUser();
-    if (authErr || !caller) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    const authed = await verifyUser(req);
+    if (authed instanceof Response) return authed;
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      return new Response(JSON.stringify({ error: "AI not configured" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    if (!LOVABLE_API_KEY) return errorResponse("AI not configured", 500);
 
     const body: AnalyzeBody = await req.json().catch(() => ({}));
     const refUrls = (body.reference_urls || []).slice(0, 6);
 
     if (!body.logo_url && refUrls.length === 0 && !body.website_url) {
-      return new Response(
-        JSON.stringify({ error: "Provide at least one of: logo, references, or website URL." }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return errorResponse("Provide at least one of: logo, references, or website URL.", 400);
     }
 
-    // ─── Scrape URL (best effort) ───
     let scraped: Awaited<ReturnType<typeof scrapeUrl>> = null;
-    if (body.website_url) {
-      scraped = await scrapeUrl(body.website_url);
-    }
+    if (body.website_url) scraped = await scrapeUrl(body.website_url);
 
-    // ─── Build multimodal content array ───
     const userContent: Array<Record<string, unknown>> = [];
-
     const intro: string[] = [
       "Analyze the provided brand materials and produce a structured brand profile by calling the `fill_brand_profile` tool.",
       "",
@@ -282,8 +215,7 @@ serve(async (req) => {
     if (refUrls.length) intro.push(`- Images ${body.logo_url ? 2 : 1}–${(body.logo_url ? 1 : 0) + refUrls.length}: Reference creatives / brand visuals.`);
     if (scraped?.ogImage) intro.push(`- Final image: Website OG/preview screenshot.`);
     if (scraped) {
-      intro.push("");
-      intro.push("WEBSITE DATA:");
+      intro.push("", "WEBSITE DATA:");
       if (scraped.title) intro.push(`Title: ${scraped.title}`);
       if (scraped.description) intro.push(`Meta: ${scraped.description}`);
       if (scraped.bodyText) intro.push(`Content snippet:\n${scraped.bodyText}`);
@@ -306,7 +238,6 @@ serve(async (req) => {
 
     userContent.push({ type: "text", text: intro.join("\n") });
 
-    // Convert all images to data URLs (skip silently if any fail).
     const allImageUrls: string[] = [];
     if (body.logo_url) allImageUrls.push(body.logo_url);
     allImageUrls.push(...refUrls);
@@ -321,15 +252,11 @@ serve(async (req) => {
       }
     }
     if (attachedCount === 0 && !scraped) {
-      return new Response(
-        JSON.stringify({ error: "Could not load any of the provided images or website." }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return errorResponse("Could not load any of the provided images or website.", 400);
     }
 
     console.log(`[brand-autofill] images=${attachedCount}, scraped=${!!scraped}, url=${body.website_url || "—"}`);
 
-    // ─── Call Lovable AI (Gemini 2.5 Pro for best multimodal reasoning) ───
     const aiRes = await fetch(LOVABLE_AI_URL, {
       method: "POST",
       headers: {
@@ -355,28 +282,16 @@ serve(async (req) => {
     if (!aiRes.ok) {
       const t = await aiRes.text().catch(() => "");
       console.error("AI gateway error", aiRes.status, t);
-      if (aiRes.status === 429) {
-        return new Response(JSON.stringify({ error: "Rate limited — please try again in a moment." }), {
-          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      if (aiRes.status === 402) {
-        return new Response(JSON.stringify({ error: "AI credits exhausted — add funds to your Lovable AI workspace." }), {
-          status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      return new Response(JSON.stringify({ error: "AI analysis failed." }), {
-        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      if (aiRes.status === 429) return errorResponse("Rate limited — please try again in a moment.", 429);
+      if (aiRes.status === 402) return errorResponse("AI credits exhausted — add funds to your Lovable AI workspace.", 402);
+      return errorResponse("AI analysis failed.", 500);
     }
 
     const aiData = await aiRes.json();
     const toolCall = aiData?.choices?.[0]?.message?.tool_calls?.[0];
     if (!toolCall?.function?.arguments) {
       console.error("No tool_call in response:", JSON.stringify(aiData).slice(0, 500));
-      return new Response(JSON.stringify({ error: "AI did not return a structured profile." }), {
-        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return errorResponse("AI did not return a structured profile.", 500);
     }
 
     let parsed: Record<string, unknown>;
@@ -384,12 +299,9 @@ serve(async (req) => {
       parsed = JSON.parse(toolCall.function.arguments);
     } catch (e) {
       console.error("Tool args not JSON:", e);
-      return new Response(JSON.stringify({ error: "AI returned malformed data." }), {
-        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return errorResponse("AI returned malformed data.", 500);
     }
 
-    // No char clamping — let the form receive the full LLM output.
     const asStr = (v: unknown): string => (typeof v === "string" ? v : "");
     const result = {
       industry: asStr(parsed.industry),
@@ -412,9 +324,7 @@ serve(async (req) => {
     });
   } catch (e) {
     console.error("brand-autofill error:", e);
-    return new Response(
-      JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    const msg = e instanceof Error ? e.message : "Unknown error";
+    return errorResponse(msg, 500);
   }
 });

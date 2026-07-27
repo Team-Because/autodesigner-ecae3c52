@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
-import { supabase } from "@/integrations/supabase/client";
+import { signInWithPassword } from "@/services/auth";
+import { getMyProfileFields } from "@/services/profiles";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -46,35 +47,26 @@ export default function Login() {
     }
 
     setLoading(true);
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: loginEmail,
-      password,
-    });
-    setLoading(false);
+    try {
+      const { session: newSession } = await signInWithPassword(loginEmail, password);
 
-    if (error) {
-      toast.error(error.message || "Login failed. Please check your credentials.");
-      return;
-    }
-
-    // Persist this session into the multi-account vault.
-    // (Supabase storage now holds this session as the active one; previous
-    // accounts remain available via the vault for instant switching.)
-    if (data.session) {
+      // Persist this session into the multi-account vault. Supabase storage
+      // now holds this session as the active one; previous accounts remain
+      // available via the vault for instant switching.
       const usernameGuess = email.trim().includes("@")
         ? email.trim().split("@")[0]
         : email.trim();
-      // Best-effort enrichment from profiles (non-blocking)
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("username, display_name")
-        .eq("user_id", data.session.user.id)
-        .maybeSingle();
-      upsertAccount(data.session, {
+      const profile = await getMyProfileFields(newSession.user.id, ["username", "display_name"]);
+      upsertAccount(newSession, {
         username: profile?.username || usernameGuess,
         displayName: profile?.display_name || undefined,
       });
       navigate("/studio", { replace: true });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Login failed. Please check your credentials.";
+      toast.error(msg);
+    } finally {
+      setLoading(false);
     }
   };
 

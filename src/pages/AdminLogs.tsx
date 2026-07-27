@@ -1,10 +1,7 @@
-import { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { useMemo, useState } from "react";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
-import { useAuth } from "@/hooks/useAuth";
 import { Navigate } from "react-router-dom";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Activity } from "lucide-react";
 import { format } from "date-fns";
@@ -15,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useState } from "react";
+import { useAdminActivityLogs, useAdminProfiles } from "@/hooks/queries/useAdmin";
 
 const ACTION_LABELS: Record<string, { label: string; color: "default" | "secondary" | "destructive" }> = {
   "brand.created": { label: "Brand Created", color: "default" },
@@ -38,45 +35,25 @@ const ACTION_LABELS: Record<string, { label: string; color: "default" | "seconda
 };
 
 export default function AdminLogs() {
-  const { user } = useAuth();
   const { isAdmin, isLoading: adminLoading } = useIsAdmin();
   const [actionFilter, setActionFilter] = useState("all");
 
-  const { data: logs = [], isLoading } = useQuery({
-    queryKey: ["admin-activity-logs"],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("activity_logs" as any)
-        .select("*")
-        .order("created_at", { ascending: false })
-        .limit(200);
-      return (data as any[]) ?? [];
-    },
-    enabled: !!user && isAdmin,
-  });
-
-  const { data: profiles = [] } = useQuery({
-    queryKey: ["admin-profiles"],
-    queryFn: async () => {
-      const { data } = await supabase.from("profiles").select("*");
-      return data ?? [];
-    },
-    enabled: !!user && isAdmin,
-  });
+  const { data: logs = [], isLoading } = useAdminActivityLogs(200);
+  const { data: profiles = [] } = useAdminProfiles();
 
   const profileMap = useMemo(
     () => Object.fromEntries(profiles.map((p) => [p.user_id, p.display_name || p.username || p.user_id.slice(0, 8)])),
-    [profiles]
+    [profiles],
   );
 
   const uniqueActions = useMemo(
-    () => [...new Set(logs.map((l: any) => l.action))].sort(),
-    [logs]
+    () => [...new Set(logs.map((l) => l.action))].sort(),
+    [logs],
   );
 
   const filtered = useMemo(() => {
     if (actionFilter === "all") return logs;
-    return logs.filter((l: any) => l.action === actionFilter);
+    return logs.filter((l) => l.action === actionFilter);
   }, [logs, actionFilter]);
 
   if (adminLoading) {
@@ -124,7 +101,7 @@ export default function AdminLogs() {
         </Card>
       ) : (
         <div className="space-y-2">
-          {filtered.map((log: any) => {
+          {filtered.map((log) => {
             const actionInfo = ACTION_LABELS[log.action] || { label: log.action, color: "secondary" as const };
             const meta = log.metadata && typeof log.metadata === "object" ? log.metadata : {};
             const metaStr = Object.entries(meta)

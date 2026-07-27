@@ -1,8 +1,5 @@
 import { useState, useMemo } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
-import { useAuth } from "@/hooks/useAuth";
 import { useActivityLog } from "@/hooks/useActivityLog";
 import { Navigate } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
@@ -28,56 +25,44 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { Loader2, ArrowRightLeft, Search, Palette, ChevronDown, Folder } from "lucide-react";
+import { Loader2, ArrowRightLeft, Search, ChevronDown, Folder } from "lucide-react";
 import { toast } from "sonner";
+import {
+  useAdminAllBrands,
+  useAdminAllCampaigns,
+  useAdminProfiles,
+} from "@/hooks/queries/useAdmin";
+import {
+  useTransferBrand,
+  useTransferCampaign,
+} from "@/hooks/mutations/useAdminMutations";
+import type { Brand } from "@/lib/db";
 
 type TransferTarget =
-  | { type: "brand"; brand: any }
-  | { type: "group"; groupId: string; groupName: string; brands: any[]; groupUserId: string | null };
+  | { type: "brand"; brand: Brand }
+  | { type: "group"; groupId: string; groupName: string; brands: Brand[]; groupUserId: string | null };
 
 export default function AdminBrands() {
-  const { user } = useAuth();
   const { isAdmin, isLoading: adminLoading } = useIsAdmin();
   const { log } = useActivityLog();
-  const queryClient = useQueryClient();
 
   const [search, setSearch] = useState("");
   const [userFilter, setUserFilter] = useState("all");
   const [transferTarget, setTransferTarget] = useState<TransferTarget | null>(null);
   const [targetUserId, setTargetUserId] = useState("");
-  const [transferring, setTransferring] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
 
-  const { data: brands = [], isLoading: brandsLoading } = useQuery({
-    queryKey: ["admin-all-brands"],
-    queryFn: async () => {
-      const { data } = await supabase.from("brands").select("*").order("name");
-      return data ?? [];
-    },
-    enabled: !!user && isAdmin,
-  });
+  const { data: brands = [], isLoading: brandsLoading } = useAdminAllBrands();
+  const { data: profiles = [] } = useAdminProfiles();
+  const { data: groups = [] } = useAdminAllCampaigns();
 
-  const { data: profiles = [] } = useQuery({
-    queryKey: ["admin-profiles"],
-    queryFn: async () => {
-      const { data } = await supabase.from("profiles").select("*");
-      return data ?? [];
-    },
-    enabled: !!user && isAdmin,
-  });
-
-  const { data: groups = [] } = useQuery({
-    queryKey: ["admin-all-groups"],
-    queryFn: async () => {
-      const { data } = await supabase.from("campaigns").select("*").order("name");
-      return data ?? [];
-    },
-    enabled: !!user && isAdmin,
-  });
+  const transferBrandMutation = useTransferBrand();
+  const transferCampaignMutation = useTransferCampaign();
+  const transferring = transferBrandMutation.isPending || transferCampaignMutation.isPending;
 
   const profileMap = useMemo(
     () => Object.fromEntries(profiles.map((p) => [p.user_id, p.display_name || p.username || p.user_id.slice(0, 8)])),
-    [profiles]
+    [profiles],
   );
 
   const uniqueUsers = useMemo(() => {
@@ -100,7 +85,7 @@ export default function AdminBrands() {
   }, [brands, userFilter, search]);
 
   const groupedFiltered = useMemo(() => {
-    const result: { groupName: string; groupId: string | null; groupUserId: string | null; brands: typeof brands }[] = [];
+    const result: { groupName: string; groupId: string | null; groupUserId: string | null; brands: Brand[] }[] = [];
     for (const g of groups) {
       const gb = filtered.filter((b) => b.campaign_id === g.id);
       if (gb.length > 0) result.push({ groupName: g.name, groupId: g.id, groupUserId: g.user_id, brands: gb });
@@ -114,7 +99,6 @@ export default function AdminBrands() {
     setExpandedGroups((prev) => ({ ...prev, [key]: prev[key] === false ? true : false }));
   };
 
-  // Get current owner for the transfer dialog
   const currentOwnerId = transferTarget
     ? transferTarget.type === "brand"
       ? transferTarget.brand.user_id
@@ -123,54 +107,41 @@ export default function AdminBrands() {
 
   const handleTransfer = async () => {
     if (!transferTarget || !targetUserId) return;
-    setTransferring(true);
     try {
       if (transferTarget.type === "brand") {
         const { id: brandId, user_id: originalUserId, name } = transferTarget.brand;
-        const { error } = await supabase.from("brands").update({ user_id: targetUserId }).eq("id", brandId);
-        if (error) throw error;
-        await supabase.from("brand_assets").update({ user_id: targetUserId }).eq("brand_id", brandId);
-        await supabase.from("generations").update({ user_id: targetUserId }).eq("brand_id", brandId);
-        log("brand.transferred", "brand", brandId, { from_user: originalUserId, to_user: targetUserId, brand_name: name });
+        await transferBrandMutation.mutateAsync({ brandId, targetUserId });
+        log("brand.transferred", "brand", brandId, {
+          from_user: originalUserId,
+          to_user: targetUserId,
+          brand_name: name,
+        });
         toast.success(`"${name}" transferred to ${profileMap[targetUserId] || targetUserId.slice(0, 8)}`);
       } else {
-        // Transfer entire group: campaign + all brands + assets + generations
         const { groupId, groupName, brands: groupBrands } = transferTarget;
-
-        // 1. Transfer the campaign itself
-        if (groupId) {
-          const { error } = await supabase.from("campaigns").update({ user_id: targetUserId }).eq("id", groupId);
-          if (error) throw error;
-        }
-
-        // 2. Transfer all brands in the group
         const brandIds = groupBrands.map((b) => b.id);
         const originalUserId = groupBrands[0]?.user_id;
 
-        for (const brandId of brandIds) {
-          await supabase.from("brands").update({ user_id: targetUserId }).eq("id", brandId);
-          await supabase.from("brand_assets").update({ user_id: targetUserId }).eq("brand_id", brandId);
-          await supabase.from("generations").update({ user_id: targetUserId }).eq("brand_id", brandId);
-        }
+        await transferCampaignMutation.mutateAsync({
+          campaignId: groupId,
+          brandIds,
+          targetUserId,
+        });
 
-        log("group.transferred", "campaign", groupId || "", {
+        log("group.transferred", "campaign", groupId, {
           from_user: originalUserId,
           to_user: targetUserId,
           group_name: groupName,
           brand_count: brandIds.length,
         });
-
         toast.success(`Group "${groupName}" (${brandIds.length} brands) transferred to ${profileMap[targetUserId] || targetUserId.slice(0, 8)}`);
       }
 
       setTransferTarget(null);
       setTargetUserId("");
-      queryClient.invalidateQueries({ queryKey: ["admin-all-brands"] });
-      queryClient.invalidateQueries({ queryKey: ["admin-all-groups"] });
-    } catch (err: any) {
-      toast.error(err.message || "Transfer failed.");
-    } finally {
-      setTransferring(false);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Transfer failed.";
+      toast.error(msg);
     }
   };
 
@@ -190,7 +161,6 @@ export default function AdminBrands() {
         <p className="text-muted-foreground mt-1">View and transfer brands or entire groups across accounts.</p>
       </div>
 
-      {/* Filters */}
       <div className="flex flex-wrap gap-3">
         <div className="relative flex-1 min-w-[200px] max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -209,7 +179,6 @@ export default function AdminBrands() {
         </Select>
       </div>
 
-      {/* Brand list grouped */}
       {brandsLoading ? (
         <div className="space-y-6">
           {Array.from({ length: 2 }).map((_, gi) => (
@@ -259,7 +228,7 @@ export default function AdminBrands() {
                           groupName: group.groupName,
                           brands: group.brands,
                           groupUserId: group.groupUserId,
-                        } as TransferTarget & { groupUserId: string | null });
+                        });
                         setTargetUserId("");
                       }}
                     >
@@ -316,7 +285,6 @@ export default function AdminBrands() {
         </div>
       )}
 
-      {/* Transfer dialog */}
       <Dialog open={!!transferTarget} onOpenChange={(open) => !open && setTransferTarget(null)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
