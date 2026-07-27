@@ -48,13 +48,14 @@ export async function insertActivityLog(row: {
   entityId?: string;
   metadata?: Record<string, unknown>;
 }): Promise<void> {
-  await supabase.from(TABLES.activity_logs).insert({
+  const payload: Record<string, unknown> = {
     user_id: row.userId,
     action: row.action,
     entity_type: row.entityType,
-    entity_id: row.entityId ?? null,
     metadata: row.metadata ?? {},
-  });
+  };
+  if (row.entityId) payload.entity_id = row.entityId;
+  await supabase.from(TABLES.activity_logs).insert(payload as never);
 }
 
 export async function listRecentActivityLogs(limit = 200): Promise<ActivityLogRow[]> {
