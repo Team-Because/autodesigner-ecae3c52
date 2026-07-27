@@ -3,6 +3,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { CreditCard, TrendingUp, Palette, Sparkles, Download, Chrome, MonitorDown, Puzzle, FolderOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { useAuth } from "@/hooks/useAuth";
 import { useMemo, useState } from "react";
 import { format, subMonths, startOfMonth, endOfMonth } from "date-fns";
 import { useMyProfile } from "@/hooks/queries/useProfile";
@@ -11,6 +12,7 @@ import { useMyActiveBrandsMinimal } from "@/hooks/queries/useBrands";
 import { useMyGenerationsMinimal } from "@/hooks/queries/useGenerations";
 
 export default function Dashboard() {
+  const { user } = useAuth();
   const [showExtensionDialog, setShowExtensionDialog] = useState(false);
 
   const downloadExtension = () => {
