@@ -129,7 +129,7 @@ export const MarketingLayout = () => (
       <div className="border-t border-line">
         <div className="max-w-[1180px] mx-auto px-6 py-5 text-xs text-ink-faint flex flex-col sm:flex-row gap-2 justify-between">
           <p>© {new Date().getFullYear()} Rellow Digital Private Limited.</p>
-          <p className="font-mono-sys">bdesign — a product of Because</p>
+          <p className="font-mono-sys">B Design — a product of Because</p>
         </div>
       </div>
     </footer>
