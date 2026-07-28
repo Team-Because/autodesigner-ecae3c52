@@ -67,8 +67,8 @@ export default function Pricing() {
   return (
     <>
       <SEO
-        title="Pricing — BDesign Credit-Based Plans"
-        description="Credit-based pricing for BDesign. Starter, Growth, Agency, and Enterprise plans. Credits are consumed per generation attempt and automatically refunded on failure."
+        title="Pricing — B Design Credit-Based Plans"
+        description="Credit-based pricing for B Design. Starter, Growth, Agency, and Enterprise plans. Credits are consumed per generation attempt and automatically refunded on failure."
         path="/pricing"
       />
 

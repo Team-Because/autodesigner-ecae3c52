@@ -38,7 +38,7 @@ async function scrapeUrl(url: string): Promise<{
   if (!isSafePublicHttpsUrl(url)) return null;
   try {
     const res = await fetch(url, {
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; MakeMyAdBot/1.0)" },
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; BDesignBot/1.0)" },
       signal: AbortSignal.timeout(12000),
       redirect: "manual",
     });

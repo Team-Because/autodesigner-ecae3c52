@@ -1,4 +1,4 @@
-// BDesign content script — tiny icon-only hover overlay + inline chooser panel.
+// B Design content script — tiny icon-only hover overlay + inline chooser panel.
 // -----------------------------------------------------------------------------
 (() => {
   if (window.__bdesignInjected) return;
@@ -76,11 +76,11 @@
       .msg.ok  { background:#F0FDF4; color:#15803D; }
       a { color:#2563EB; text-decoration: none; cursor:pointer; font-weight: 600; }
     </style>
-    <div class="btn" id="btn" title="Save to BDesign"><img src="${ICON_URL}" alt="" /></div>
-    <div class="tip" id="tip">Save to BDesign</div>
+    <div class="btn" id="btn" title="Save to B Design"><img src="${ICON_URL}" alt="" /></div>
+    <div class="tip" id="tip">Save to B Design</div>
     <div class="panel" id="panel">
       <div class="head">
-        <div class="brand"><img src="${ICON_URL}" alt="" /><span class="title">Save to BDesign</span></div>
+        <div class="brand"><img src="${ICON_URL}" alt="" /><span class="title">Save to B Design</span></div>
         <span class="close" id="close">✕</span>
       </div>
       <label for="brand">Brand</label>
@@ -239,7 +239,7 @@
       chrome.storage.local.get(["bt_defaults", "bt_session"]),
     ]);
     if (!defaultsStore.bt_session) {
-      showMsg("Sign in to the BDesign extension first.", "err");
+      showMsg("Sign in to the B Design extension first.", "err");
       saveBtn.disabled = true;
       brandSel.innerHTML = `<option value="">Not signed in</option>`;
       return;
@@ -249,7 +249,7 @@
       brandSel.innerHTML = `<option value="">No brands found</option>`;
       msg.style.display = "block";
       msg.className = "msg err";
-      msg.innerHTML = `Create a brand at <a id="openApp">BDesign</a> first.`;
+      msg.innerHTML = `Create a brand at <a id="openApp">B Design</a> first.`;
       shadow.getElementById("openApp")?.addEventListener("click", (ev) => {
         ev.preventDefault();
         window.open("https://autodesigner.lovable.app/brands", "_blank");

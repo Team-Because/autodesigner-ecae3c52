@@ -9,13 +9,13 @@ import { ArrowRight, Link2, Upload, ImageIcon } from "lucide-react";
 const orgSchema = {
   "@context": "https://schema.org",
   "@type": "Organization",
-  name: "BDesign",
-  alternateName: "BDesign by Because",
+  name: "B Design",
+  alternateName: "B Design by Because",
   url: SITE_URL,
   logo: `${SITE_URL}/logo-icon.png`,
   image: DEFAULT_OG_IMAGE,
   description:
-    "BDesign turns any reference on the internet into a creative that's entirely yours. Built by Because.",
+    "B Design turns any reference on the internet into a creative that's entirely yours. Built by Because.",
   parentOrganization: {
     "@type": "Organization",
     name: "Rellow Digital Private Limited",
@@ -27,13 +27,13 @@ const orgSchema = {
 const softwareSchema = {
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
-  name: "BDesign",
+  name: "B Design",
   applicationCategory: "BusinessApplication",
   operatingSystem: "Web",
   offers: { "@type": "Offer", priceCurrency: "INR", price: "0", description: "Free to start · credit-based generation" },
   url: SITE_URL,
   description:
-    "Drop any ad, poster or screenshot. BDesign rebuilds it in your brand — set up once, never re-explained.",
+    "Drop any ad, poster or screenshot. B Design rebuilds it in your brand — set up once, never re-explained.",
   publisher: { "@type": "Organization", name: "Because — Rellow Digital Private Limited" },
 };
 
@@ -41,8 +41,8 @@ export default function Home() {
   return (
     <>
       <SEO
-        title="BDesign — The internet is yours now."
-        description="Every ad you've screenshotted. Every layout you meant to steal. Drop it in — BDesign rebuilds it in your brand. One click."
+        title="B Design — The internet is yours now."
+        description="Every ad you've screenshotted. Every layout you meant to steal. Drop it in — B Design rebuilds it in your brand. One click."
         path="/"
         jsonLd={[orgSchema, softwareSchema]}
       />
@@ -330,7 +330,7 @@ export default function Home() {
 
         <ul className="mt-14 grid md:grid-cols-2 gap-4">
           {[
-            { t: "One click, anywhere", d: "No saving, no visiting BDesign first." },
+            { t: "One click, anywhere", d: "No saving, no visiting B Design first." },
             { t: "Brand Hub", d: "Every brand, its own vault." },
             { t: "Multiple brands, one account", d: "Switch without re-entering anything." },
             { t: "Copy that doesn't repeat", d: "Tone rotates, stays on-voice." },

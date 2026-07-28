@@ -42,8 +42,8 @@ export default function Features() {
   return (
     <>
       <SEO
-        title="Features — BDesign"
-        description="Inside BDesign: the Brand Hub, Paste & Parse setup, reference-as-blueprint analysis, four-format output, mood-rotated copy, and agency workspaces."
+        title="Features — B Design"
+        description="Inside B Design: the Brand Hub, Paste & Parse setup, reference-as-blueprint analysis, four-format output, mood-rotated copy, and agency workspaces."
         path="/features"
       />
 

@@ -4,7 +4,7 @@ import { FolderMark } from "@/components/marketing/folder/FolderMark";
 
 const faqs = [
   {
-    q: "Does BDesign copy the reference I upload?",
+    q: "Does B Design copy the reference I upload?",
     a: "No — and it's a mechanism, not a policy. Before any generation runs, the reference is analysed for structure only: composition, hierarchy, where the eye lands. Brand names, prices, faces, and literal text are stripped out at that step. The image generator never sees the original reference; it only sees the structural directive plus your brand assets.",
   },
   {
@@ -47,7 +47,7 @@ export default function FAQ() {
   return (
     <>
       <SEO
-        title="FAQ — BDesign"
+        title="FAQ — B Design"
         description="How references are handled, competitor ads, copy variation, credits, refunds, and team workspaces."
         path="/faq"
         jsonLd={[faqSchema]}

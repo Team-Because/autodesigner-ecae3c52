@@ -4,8 +4,8 @@ export default function Trust() {
   return (
     <>
       <SEO
-        title="Trust, Privacy & Security — BDesign"
-        description="How BDesign processes reference images, isolates client brand vaults, and handles credits on failed generations."
+        title="Trust, Privacy & Security — B Design"
+        description="How B Design processes reference images, isolates client brand vaults, and handles credits on failed generations."
         path="/trust"
       />
 
@@ -15,7 +15,7 @@ export default function Trust() {
           Trust, privacy &amp; security
         </h1>
         <p className="mt-6 text-ink-soft leading-relaxed text-[16px]">
-          This page is maintained by <strong className="text-ink">Rellow Digital Private Limited</strong> (the company behind BDesign)
+          This page is maintained by <strong className="text-ink">Rellow Digital Private Limited</strong> (the company behind B Design)
           to answer common security and privacy questions. It is app-owned editable content — not an independent
           audit or certification.
         </p>
@@ -46,7 +46,7 @@ export default function Trust() {
 
           <h2 className="text-foreground">Accounts & access</h2>
           <ul className="list-disc pl-6 space-y-2">
-            <li>Accounts are created by a BDesign admin and protected by an email address and password.</li>
+            <li>Accounts are created by a B Design admin and protected by an email address and password.</li>
             <li>Sessions are managed by our backend provider and are scoped to the signed‑in user.</li>
             <li>Admin functionality (user management, account switching, global history) is gated by a server‑side role check, not by anything the browser can claim.</li>
           </ul>
@@ -60,7 +60,7 @@ export default function Trust() {
 
           <h2 className="text-foreground">Platform & hosting</h2>
           <p>
-            BDesign runs on managed cloud infrastructure. Database traffic, file storage, authentication, and
+            B Design runs on managed cloud infrastructure. Database traffic, file storage, authentication, and
             serverless functions are handled by that platform, and connections to the app are served over HTTPS.
             We describe enabled platform capabilities factually here — this is not a certification claim.
           </p>
@@ -82,7 +82,7 @@ export default function Trust() {
 
           <h2 className="text-foreground">Reporting a security issue</h2>
           <p>
-            If you believe you have found a security vulnerability in BDesign, please contact us at{" "}
+            If you believe you have found a security vulnerability in B Design, please contact us at{" "}
             <a href="mailto:hello@becausebranding.in" className="text-primary underline">
               hello@becausebranding.in
             </a>
