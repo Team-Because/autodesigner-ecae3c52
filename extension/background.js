@@ -5,8 +5,10 @@
 //   2. This SW posts to the `enqueue-generation` edge function
 //   3. Edge function returns { generationId } instantly; the server pipeline
 //      runs to completion regardless of tab/popup state.
-//   4. We poll `generations` every ~10s while any row is not-final; on
+//   4. We poll `generations` every ~30s while any row is not-final; on
 //      completion, we fire a Chrome notification.
+//   5. `sync_session` messages from the web-app content script keep the
+//      extension logged in without a separate sign-in form.
 // -----------------------------------------------------------------------------
 
 const SUPABASE_URL = "https://jibbeetyogbfkjvazysy.supabase.co";
@@ -24,13 +26,17 @@ chrome.runtime.onInstalled.addListener(() => {
 
 chrome.contextMenus.onClicked.addListener(async (info) => {
   if (info.menuItemId !== "bdesign-generate" || !info.srcUrl) return;
-  const { bt_defaults } = await chrome.storage.local.get(["bt_defaults"]);
+  const { bt_defaults, bt_session } = await chrome.storage.local.get(["bt_defaults", "bt_session"]);
+  if (!bt_session) {
+    await chrome.storage.local.set({ selectedImageUrl: info.srcUrl });
+    notifyError("Sign in to B Design in the extension popup, then try again.");
+    return;
+  }
   const brandId = bt_defaults?.brandId;
   const format  = bt_defaults?.format || "square";
   if (!brandId) {
-    // No default brand set — open popup so the user can pick one.
     await chrome.storage.local.set({ selectedImageUrl: info.srcUrl });
-    try { await chrome.action.openPopup(); } catch {}
+    notifyError("Pick a default brand in the B Design popup, then right-click again.");
     return;
   }
   const res = await enqueue({ imageUrl: info.srcUrl, brandId, format });
@@ -40,29 +46,48 @@ chrome.contextMenus.onClicked.addListener(async (info) => {
 // ── Message router ────────────────────────────────────────────────────────────
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.type === "enqueue") {
-    enqueue(msg.payload).then((r) => {
-      sendResponse(r);
-      notifyEnqueue(r);
-    }).catch((e) => sendResponse({ ok: false, error: e?.message || String(e) }));
-    return true; // async response
+    enqueue(msg.payload)
+      .then((r) => { sendResponse(r); notifyEnqueue(r); })
+      .catch((e) => sendResponse({ ok: false, error: e?.message || String(e) }));
+    return true;
   }
   if (msg?.type === "get_brands") {
-    getBrandsCached().then((brands) => sendResponse({ brands })).catch(() => sendResponse({ brands: [] }));
+    getBrandsCached()
+      .then((brands) => sendResponse({ brands }))
+      .catch(() => sendResponse({ brands: [] }));
     return true;
   }
   if (msg?.type === "get_session") {
     getSession().then((s) => sendResponse({ session: s })).catch(() => sendResponse({ session: null }));
     return true;
   }
+  if (msg?.type === "sync_session") {
+    syncSession(msg.session).then(() => sendResponse({ ok: true })).catch(() => sendResponse({ ok: false }));
+    return true;
+  }
+  if (msg?.type === "clear_session") {
+    chrome.storage.local.remove(["bt_session", "bt_brands", "bt_defaults", "bt_pending"])
+      .then(() => sendResponse({ ok: true }));
+    return true;
+  }
 });
 
 // ── Session helpers ───────────────────────────────────────────────────────────
+async function syncSession(next) {
+  if (!next?.access_token || !next?.refresh_token) return;
+  const { bt_session } = await chrome.storage.local.get(["bt_session"]);
+  // Only replace if the incoming token is different (avoids storage churn).
+  if (bt_session?.access_token === next.access_token) return;
+  await chrome.storage.local.set({ bt_session: next });
+  // Invalidate brand cache so we refetch under the (possibly different) user.
+  await chrome.storage.local.remove(["bt_brands"]);
+}
+
 async function getSession() {
   const { bt_session } = await chrome.storage.local.get(["bt_session"]);
   if (!bt_session) return null;
   const expMs = (bt_session.expires_at || 0) * 1000;
   if (Date.now() < expMs - 60_000) return bt_session;
-  // Refresh
   try {
     const r = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
       method: "POST",
@@ -81,7 +106,7 @@ async function getSession() {
 
 async function authHeaders() {
   const s = await getSession();
-  if (!s) throw new Error("Not signed in — open the B Design extension and sign in.");
+  if (!s) throw new Error("Not signed in — open the B Design popup or the B Design web app.");
   return {
     apikey: SUPABASE_ANON_KEY,
     Authorization: `Bearer ${s.access_token}`,
@@ -111,19 +136,22 @@ async function getBrandsCached() {
 
 // ── Enqueue ───────────────────────────────────────────────────────────────────
 async function enqueue({ imageUrl, brandId, format }) {
-  const h = await authHeaders();
-  const r = await fetch(`${SUPABASE_URL}/functions/v1/enqueue-generation`, {
-    method: "POST",
-    headers: h,
-    body: JSON.stringify({ brandId, referenceImageUrl: imageUrl, outputFormat: format }),
-  });
-  const data = await r.json().catch(() => ({}));
-  if (!r.ok) {
-    return { ok: false, error: data?.error || `Enqueue failed (${r.status})` };
+  let h;
+  try { h = await authHeaders(); }
+  catch (e) { return { ok: false, error: e.message }; }
+  let r;
+  try {
+    r = await fetch(`${SUPABASE_URL}/functions/v1/enqueue-generation`, {
+      method: "POST",
+      headers: h,
+      body: JSON.stringify({ brandId, referenceImageUrl: imageUrl, outputFormat: format }),
+    });
+  } catch (e) {
+    return { ok: false, error: `Network error: ${e?.message || "failed"}` };
   }
-  // Remember last-used defaults
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) return { ok: false, error: data?.error || `Enqueue failed (${r.status})` };
   await chrome.storage.local.set({ bt_defaults: { brandId, format } });
-  // Track this generation so the poller can notify on completion.
   const { bt_pending = [] } = await chrome.storage.local.get(["bt_pending"]);
   bt_pending.push({ id: data.generationId, since: Date.now() });
   await chrome.storage.local.set({ bt_pending });
@@ -141,21 +169,22 @@ function notifyEnqueue(res) {
       priority: 1,
     });
   } else {
-    chrome.notifications.create(`bd-error-${Date.now()}`, {
-      type: "basic",
-      iconUrl: "icon.png",
-      title: "Couldn't send to B Design",
-      message: res?.error || "Unknown error",
-      priority: 2,
-    });
+    notifyError(res?.error || "Unknown error");
   }
 }
 
+function notifyError(message) {
+  chrome.notifications.create(`bd-error-${Date.now()}`, {
+    type: "basic",
+    iconUrl: "icon.png",
+    title: "B Design",
+    message,
+    priority: 2,
+  });
+}
+
 // ── Completion poller ─────────────────────────────────────────────────────────
-// Uses chrome.alarms so the SW is woken every 30s while there are pending rows.
-chrome.alarms.onAlarm.addListener((a) => {
-  if (a.name === "bd-poll") pollPending();
-});
+chrome.alarms.onAlarm.addListener((a) => { if (a.name === "bd-poll") pollPending(); });
 
 async function ensurePoller() {
   const existing = await chrome.alarms.get("bd-poll");
@@ -178,29 +207,22 @@ async function pollPending() {
   const stillPending = [];
   for (const p of bt_pending) {
     const row = rows.find((x) => x.id === p.id);
-    if (!row) {
-      // Row disappeared or too old — drop after 30 min.
-      if (now - p.since < 30 * 60_000) stillPending.push(p);
-      continue;
-    }
+    if (!row) { if (now - p.since < 30 * 60_000) stillPending.push(p); continue; }
     if (row.status === "completed" && row.output_image_url) {
       chrome.notifications.create(`bd-done-${row.id}`, {
-        type: "basic",
-        iconUrl: "icon.png",
+        type: "basic", iconUrl: "icon.png",
         title: "Creative ready 🎨",
         message: "Your B Design creative is done. Click to view.",
         priority: 2,
       });
     } else if (row.status === "failed") {
       chrome.notifications.create(`bd-fail-${row.id}`, {
-        type: "basic",
-        iconUrl: "icon.png",
+        type: "basic", iconUrl: "icon.png",
         title: "Generation failed",
         message: "One of your B Design jobs failed. Open the popup for details.",
         priority: 2,
       });
     } else {
-      // still processing / analyzing / adapting / generating
       if (now - p.since < 30 * 60_000) stillPending.push(p);
     }
   }
@@ -208,12 +230,10 @@ async function pollPending() {
   if (!stillPending.length) chrome.alarms.clear("bd-poll");
 }
 
-// ── Notification click → open popup / app ─────────────────────────────────────
+// ── Notification click → open history / popup ────────────────────────────────
 chrome.notifications.onClicked.addListener((id) => {
-  if (id.startsWith("bd-done-")) {
+  if (id.startsWith("bd-done-") || id.startsWith("bd-fail-")) {
     chrome.tabs.create({ url: `${APP_URL}/history` });
-  } else {
-    try { chrome.action.openPopup(); } catch {}
   }
   chrome.notifications.clear(id);
 });
