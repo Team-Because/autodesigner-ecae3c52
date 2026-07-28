@@ -1,71 +1,86 @@
-// BDesign content script — Pinterest-style hover overlay
-// -----------------------------------------------------------------------------
-// Shows a small "Save to BDesign" button on any image (>= MIN_SIZE) when the
-// user hovers. Clicking it opens an inline chooser (brand + format) inside a
-// shadow DOM to avoid site CSS collisions. On save, forwards to the background
-// service worker which enqueues on the server.
+// BDesign content script — tiny icon-only hover overlay + inline chooser panel.
 // -----------------------------------------------------------------------------
 (() => {
   if (window.__bdesignInjected) return;
   window.__bdesignInjected = true;
 
-  const MIN_SIZE = 150;
+  const MIN_SIZE = 140;
+  const ICON_URL = chrome.runtime.getURL("icon.png");
 
-  // Shadow host containing the overlay button + chooser panel.
   const host = document.createElement("div");
   host.style.cssText = "position:absolute;top:0;left:0;width:0;height:0;z-index:2147483646;pointer-events:none";
   document.documentElement.appendChild(host);
   const shadow = host.attachShadow({ mode: "closed" });
   shadow.innerHTML = `
     <style>
-      :host, * { all: initial; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; box-sizing: border-box; }
+      :host, * { all: initial; box-sizing: border-box; font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
       .btn {
         position: fixed; z-index: 2147483647; pointer-events: auto;
-        display: inline-flex; align-items: center; gap: 6px;
-        padding: 6px 10px; border-radius: 999px;
-        background: #111; color: #fff; font-size: 12px; font-weight: 600;
-        box-shadow: 0 4px 14px rgba(0,0,0,0.25);
+        width: 32px; height: 32px; border-radius: 10px;
+        background: #ffffff; border: 1px solid rgba(15,23,42,0.08);
+        box-shadow: 0 6px 20px rgba(15,23,42,0.18), 0 2px 6px rgba(15,23,42,0.08);
+        display: flex; align-items: center; justify-content: center;
         cursor: pointer; user-select: none;
-        opacity: 0; transform: translateY(-2px); transition: opacity .12s, transform .12s;
+        opacity: 0; transform: scale(0.9); transition: opacity .12s ease, transform .12s ease, box-shadow .12s ease;
       }
-      .btn.show { opacity: 1; transform: translateY(0); }
-      .btn:hover { background: #2563EB; }
-      .dot { width: 8px; height: 8px; border-radius: 50%; background: #E5B800; display:inline-block; }
+      .btn.show { opacity: 1; transform: scale(1); }
+      .btn:hover { box-shadow: 0 8px 24px rgba(37,99,235,0.28); border-color: rgba(37,99,235,0.35); }
+      .btn img { width: 22px; height: 22px; display: block; border-radius: 6px; }
+      .tip {
+        position: fixed; z-index: 2147483647; pointer-events: none;
+        background: #0F172A; color: #fff; font-size: 11px; font-weight: 600;
+        padding: 4px 8px; border-radius: 6px; opacity: 0; transform: translateY(-2px);
+        transition: opacity .12s ease;
+      }
+      .tip.show { opacity: 1; }
       .panel {
         position: fixed; z-index: 2147483647; pointer-events: auto;
-        min-width: 240px; padding: 12px;
-        background: #fff; color: #111; border-radius: 12px;
-        box-shadow: 0 12px 40px rgba(0,0,0,0.25);
-        border: 1px solid rgba(0,0,0,0.08);
-        display: none;
+        width: 280px; padding: 16px;
+        background: #ffffff; color: #0F172A; border-radius: 16px;
+        box-shadow: 0 20px 60px rgba(15,23,42,0.25), 0 4px 12px rgba(15,23,42,0.08);
+        border: 1px solid rgba(15,23,42,0.06);
+        display: none; font-family: 'Inter', -apple-system, sans-serif;
       }
       .panel.show { display: block; }
-      .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
-      .title { font-size: 12px; font-weight: 700; color: #111; }
-      .close { cursor:pointer; color:#888; font-size:14px; padding:2px 6px; }
-      label { display:block; font-size: 11px; color:#555; margin: 8px 0 4px; font-weight: 600; }
+      .head { display:flex; align-items:center; justify-content:space-between; margin-bottom: 14px; }
+      .brand { display:flex; align-items:center; gap:8px; }
+      .brand img { width: 22px; height: 22px; border-radius: 6px; }
+      .title { font-size: 14px; font-weight: 700; color: #0F172A; letter-spacing: -0.01em; }
+      .close { cursor:pointer; color:#94A3B8; font-size:16px; line-height:1; padding:2px 6px; border-radius:6px; }
+      .close:hover { background:#F1F5F9; color:#0F172A; }
+      label { display:block; font-size: 10px; font-weight: 700; color:#64748B; text-transform: uppercase; letter-spacing: .06em; margin: 10px 0 6px; }
       select {
-        width: 100%; padding: 6px 8px; border-radius: 8px;
-        border: 1px solid rgba(0,0,0,0.15); background:#fff; font-size:12px; color:#111;
+        width: 100%; padding: 8px 10px; border-radius: 10px;
+        border: 1px solid #E2E8F0; background:#fff; font-size:13px; color:#0F172A;
+        font-family: inherit; cursor: pointer;
       }
-      .formats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
-      .fmt { padding: 6px 4px; border: 1px solid rgba(0,0,0,0.12); border-radius: 8px; text-align:center; font-size:11px; cursor:pointer; color:#333; background:#fafafa; }
+      select:focus { outline: 2px solid #2563EB; outline-offset: -1px; border-color: transparent; }
+      .formats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+      .fmt {
+        padding: 8px 4px; border: 1px solid #E2E8F0; border-radius: 10px;
+        text-align:center; font-size:11px; font-weight:600; cursor:pointer;
+        color:#475569; background:#fff; transition: all .12s ease;
+      }
+      .fmt:hover { border-color:#CBD5E1; }
       .fmt.active { background: #2563EB; color:#fff; border-color:#2563EB; }
       .save {
-        display:block; width:100%; margin-top:10px; padding:8px 10px;
-        background:#111; color:#fff; border:none; border-radius:8px; font-weight:700; font-size:12px; cursor:pointer;
+        display:block; width:100%; margin-top:14px; padding:10px 12px;
+        background:#0F172A; color:#fff; border:none; border-radius:10px;
+        font-weight:700; font-size:13px; cursor:pointer; font-family: inherit;
+        transition: background .12s ease;
       }
+      .save:hover { background:#2563EB; }
       .save[disabled] { opacity: .6; cursor: not-allowed; }
-      .msg { font-size: 11px; color:#555; margin-top: 6px; }
-      .msg.err { color:#c62828; }
-      .msg.ok  { color:#1b8f3a; }
-      .hint { font-size:11px; color:#666; }
-      a { color:#2563EB; text-decoration: none; cursor:pointer; }
+      .msg { font-size: 11px; margin-top: 10px; padding: 6px 8px; border-radius: 6px; }
+      .msg.err { background:#FEF2F2; color:#B91C1C; }
+      .msg.ok  { background:#F0FDF4; color:#15803D; }
+      a { color:#2563EB; text-decoration: none; cursor:pointer; font-weight: 600; }
     </style>
-    <div class="btn" id="btn"><span class="dot"></span><span>Save to BDesign</span></div>
+    <div class="btn" id="btn" title="Save to BDesign"><img src="${ICON_URL}" alt="" /></div>
+    <div class="tip" id="tip">Save to BDesign</div>
     <div class="panel" id="panel">
-      <div class="row">
-        <div class="title">Save to BDesign</div>
+      <div class="head">
+        <div class="brand"><img src="${ICON_URL}" alt="" /><span class="title">Save to BDesign</span></div>
         <span class="close" id="close">✕</span>
       </div>
       <label for="brand">Brand</label>
@@ -77,17 +92,18 @@
         <div class="fmt" data-f="portrait">Portrait</div>
         <div class="fmt" data-f="story">Story</div>
       </div>
-      <button class="save" id="save">Save</button>
-      <div class="msg" id="msg"></div>
+      <button class="save" id="save">Generate creative</button>
+      <div class="msg" id="msg" style="display:none"></div>
     </div>
   `;
 
-  const btn    = shadow.getElementById("btn");
-  const panel  = shadow.getElementById("panel");
+  const btn = shadow.getElementById("btn");
+  const tip = shadow.getElementById("tip");
+  const panel = shadow.getElementById("panel");
   const brandSel = shadow.getElementById("brand");
-  const fmts   = shadow.getElementById("fmts");
+  const fmts = shadow.getElementById("fmts");
   const saveBtn = shadow.getElementById("save");
-  const msg    = shadow.getElementById("msg");
+  const msg = shadow.getElementById("msg");
   const closeX = shadow.getElementById("close");
 
   let currentImg = null;
@@ -95,59 +111,104 @@
   let selectedFormat = "square";
   let hideTimer = null;
 
+  function isEligibleImg(el) {
+    if (!(el instanceof HTMLImageElement)) return false;
+    const url = el.currentSrc || el.src || "";
+    if (!url || url.startsWith("data:") || url.startsWith("blob:")) return false;
+    const w = el.naturalWidth || el.width || el.clientWidth;
+    const h = el.naturalHeight || el.height || el.clientHeight;
+    return w >= MIN_SIZE && h >= MIN_SIZE;
+  }
+
   function positionButton(img) {
     const r = img.getBoundingClientRect();
-    btn.style.top  = `${Math.max(8, r.top + 8)}px`;
-    btn.style.left = `${Math.max(8, r.right - 138)}px`;
+    // Top-right corner of the image, slightly inset.
+    btn.style.top = `${Math.max(8, r.top + 8)}px`;
+    btn.style.left = `${Math.max(8, r.right - 40)}px`;
+    tip.style.top = `${Math.max(8, r.top + 8)}px`;
+    tip.style.left = `${Math.max(8, r.right - 40 - 96)}px`;
   }
   function showButton(img) {
     currentImg = img;
     currentUrl = img.currentSrc || img.src || "";
-    if (!currentUrl || currentUrl.startsWith("data:") || currentUrl.startsWith("blob:")) return;
     positionButton(img);
     btn.classList.add("show");
   }
   function hideButton() {
+    if (panel.classList.contains("show")) return;
     btn.classList.remove("show");
+    tip.classList.remove("show");
     currentImg = null;
   }
   function hidePanel() {
     panel.classList.remove("show");
+    msg.style.display = "none";
     msg.textContent = "";
     msg.className = "msg";
   }
 
-  document.addEventListener("mouseover", (e) => {
-    const t = e.target;
-    if (!(t instanceof HTMLImageElement)) return;
-    if (t.naturalWidth < MIN_SIZE || t.naturalHeight < MIN_SIZE) return;
+  // Detection via mousemove + elementFromPoint — more reliable than mouseover
+  // on sites where images are wrapped in overlays/anchors that intercept events.
+  let lastMove = 0;
+  document.addEventListener("mousemove", (e) => {
+    const now = Date.now();
+    if (now - lastMove < 60) return;
+    lastMove = now;
     if (panel.classList.contains("show")) return;
-    if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
-    showButton(t);
-  }, true);
+    // Ignore movement over our own overlay
+    const overBtn = e.clientX >= parseFloat(btn.style.left || 0) &&
+                    e.clientX <= parseFloat(btn.style.left || 0) + 32 &&
+                    e.clientY >= parseFloat(btn.style.top || 0) &&
+                    e.clientY <= parseFloat(btn.style.top || 0) + 32;
+    if (overBtn && btn.classList.contains("show")) return;
 
-  document.addEventListener("mouseout", (e) => {
-    if (!currentImg) return;
-    if (panel.classList.contains("show")) return;
-    if (e.relatedTarget && (e.relatedTarget === btn || btn.contains(e.relatedTarget))) return;
-    hideTimer = setTimeout(hideButton, 120);
+    let el = document.elementFromPoint(e.clientX, e.clientY);
+    // Walk up a few ancestors to find an <img>
+    let img = null;
+    for (let i = 0; i < 4 && el; i++) {
+      if (el instanceof HTMLImageElement) { img = el; break; }
+      // Try to find <img> descendant of small wrappers (e.g. <a><img></a>)
+      const inner = el.querySelector && el.querySelector("img");
+      if (inner && isEligibleImg(inner)) { img = inner; break; }
+      el = el.parentElement;
+    }
+    if (img && isEligibleImg(img)) {
+      if (img !== currentImg) {
+        if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+        showButton(img);
+      }
+    } else {
+      if (btn.classList.contains("show") && !hideTimer) {
+        hideTimer = setTimeout(hideButton, 200);
+      }
+    }
   }, true);
 
   window.addEventListener("scroll", () => {
     if (currentImg && !panel.classList.contains("show")) positionButton(currentImg);
   }, true);
+  window.addEventListener("resize", () => {
+    if (currentImg && !panel.classList.contains("show")) positionButton(currentImg);
+  });
 
-  btn.addEventListener("mouseenter", () => { if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; } });
+  btn.addEventListener("mouseenter", () => {
+    if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+    tip.classList.add("show");
+  });
+  btn.addEventListener("mouseleave", () => {
+    tip.classList.remove("show");
+  });
   btn.addEventListener("click", async (e) => {
     e.stopPropagation(); e.preventDefault();
+    tip.classList.remove("show");
     if (!currentUrl) return;
     await openPanel();
   });
-  closeX.addEventListener("click", hidePanel);
+  closeX.addEventListener("click", (e) => { e.stopPropagation(); hidePanel(); hideButton(); });
   document.addEventListener("click", (e) => {
     if (!panel.classList.contains("show")) return;
     const path = e.composedPath();
-    if (!path.includes(panel) && !path.includes(btn)) hidePanel();
+    if (!path.includes(panel) && !path.includes(btn)) { hidePanel(); hideButton(); }
   }, true);
 
   fmts.addEventListener("click", (e) => {
@@ -159,40 +220,44 @@
   });
 
   async function openPanel() {
-    // Position near button
     const bRect = btn.getBoundingClientRect();
-    panel.style.top  = `${bRect.bottom + 6}px`;
-    panel.style.left = `${Math.max(8, bRect.right - 260)}px`;
+    // Prefer showing to the left of the button so it stays on-image.
+    const panelW = 280;
+    let left = bRect.right - panelW;
+    if (left < 8) left = 8;
+    if (left + panelW > window.innerWidth - 8) left = window.innerWidth - panelW - 8;
+    let top = bRect.bottom + 8;
+    if (top + 300 > window.innerHeight) top = Math.max(8, bRect.top - 300);
+    panel.style.top = `${top}px`;
+    panel.style.left = `${left}px`;
     panel.classList.add("show");
     saveBtn.disabled = false;
-    saveBtn.textContent = "Save";
+    saveBtn.textContent = "Generate creative";
 
-    // Load brands + defaults from background.
     const [brandsResp, defaultsStore] = await Promise.all([
       chrome.runtime.sendMessage({ type: "get_brands" }).catch(() => ({ brands: [] })),
       chrome.storage.local.get(["bt_defaults", "bt_session"]),
     ]);
     if (!defaultsStore.bt_session) {
-      msg.textContent = "Sign in to the BDesign extension first.";
-      msg.className = "msg err";
+      showMsg("Sign in to the BDesign extension first.", "err");
       saveBtn.disabled = true;
-      brandSel.innerHTML = "";
+      brandSel.innerHTML = `<option value="">Not signed in</option>`;
       return;
     }
     const brands = brandsResp?.brands || [];
     if (!brands.length) {
       brandSel.innerHTML = `<option value="">No brands found</option>`;
-      msg.innerHTML = `Create a brand at <a href="#" id="openApp">BDesign</a> first.`;
+      msg.style.display = "block";
       msg.className = "msg err";
+      msg.innerHTML = `Create a brand at <a id="openApp">BDesign</a> first.`;
       shadow.getElementById("openApp")?.addEventListener("click", (ev) => {
         ev.preventDefault();
-        chrome.runtime.sendMessage({ type: "open_app" }).catch(() => {});
         window.open("https://autodesigner.lovable.app/brands", "_blank");
       });
       saveBtn.disabled = true;
       return;
     }
-    const defBrand  = defaultsStore.bt_defaults?.brandId;
+    const defBrand = defaultsStore.bt_defaults?.brandId;
     const defFormat = defaultsStore.bt_defaults?.format || "square";
     brandSel.innerHTML = brands.map((b) =>
       `<option value="${b.id}" ${b.id === defBrand ? "selected" : ""}>${escapeHtml(b.name)}</option>`
@@ -203,31 +268,35 @@
     });
   }
 
+  function showMsg(text, kind) {
+    msg.style.display = "block";
+    msg.textContent = text;
+    msg.className = `msg ${kind || ""}`;
+  }
+
   saveBtn.addEventListener("click", async () => {
     const brandId = brandSel.value;
     if (!brandId || !currentUrl) return;
     saveBtn.disabled = true;
     saveBtn.textContent = "Sending…";
-    msg.textContent = "";
+    msg.style.display = "none";
     const res = await chrome.runtime.sendMessage({
       type: "enqueue",
       payload: { imageUrl: currentUrl, brandId, format: selectedFormat },
     }).catch((e) => ({ ok: false, error: e?.message || "Failed" }));
     if (res?.ok) {
-      msg.textContent = "Sent! You can close this tab.";
-      msg.className = "msg ok";
+      showMsg("Sent! Generating on the server — you can close the tab.", "ok");
       saveBtn.textContent = "Sent ✓";
-      setTimeout(() => { hidePanel(); hideButton(); }, 1200);
+      setTimeout(() => { hidePanel(); hideButton(); }, 1400);
     } else {
-      msg.textContent = res?.error || "Failed to send";
-      msg.className = "msg err";
+      showMsg(res?.error || "Failed to send", "err");
       saveBtn.disabled = false;
       saveBtn.textContent = "Retry";
     }
   });
 
   function escapeHtml(s) {
-    return String(s).replace(/[&<>"']/g, (c) => ({
+    return String(s ?? "").replace(/[&<>"']/g, (c) => ({
       "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
     }[c]));
   }
