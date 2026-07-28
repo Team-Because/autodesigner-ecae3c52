@@ -17,14 +17,16 @@
         <img src="icon.png" alt="B Design" />
         <div>
           <h1>B Design</h1>
-          <p class="sub">Sign in to send creatives from anywhere.</p>
+          <p class="sub">Sign in — or open B Design in a tab to sync automatically.</p>
         </div>
       </div>
+      <button id="open-app-btn" class="btn-primary">Open B Design & sync</button>
+      <div class="divider"><span>or sign in here</span></div>
       <div id="login-error" class="alert alert-err" hidden></div>
       <label for="login-email">Username or email</label>
-      <input id="login-email" type="text" placeholder="your username" />
+      <input id="login-email" type="text" placeholder="your username" autocomplete="username" />
       <label for="login-password">Password</label>
-      <input id="login-password" type="password" placeholder="••••••••" />
+      <input id="login-password" type="password" placeholder="••••••••" autocomplete="current-password" />
       <button id="login-btn" class="btn-primary">Sign in</button>
     </section>
 
