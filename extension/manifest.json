@@ -3,7 +3,7 @@
   "name": "BDesign — Save to BDesign",
   "version": "1.2.0",
   "description": "Hover or right-click any image on the web and send it straight into your BDesign pipeline. Works after you close the tab.",
-  "permissions": ["contextMenus", "storage", "notifications", "activeTab"],
+  "permissions": ["contextMenus", "storage", "notifications", "activeTab", "alarms"],
   "host_permissions": ["<all_urls>"],
   "action": {
     "default_popup": "popup.html",
