@@ -218,7 +218,7 @@ export default function BrandGuide() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "makemyad-master-prompt.md";
+    a.download = "b-design-master-prompt.md";
     a.click();
     URL.revokeObjectURL(url);
   };

@@ -16,12 +16,12 @@ export default function Dashboard() {
   const [showExtensionDialog, setShowExtensionDialog] = useState(false);
 
   const downloadExtension = () => {
-    fetch("/brandtonic-extension.zip")
+    fetch("/b-design-extension.zip")
       .then(res => { if (!res.ok) throw new Error("Download failed"); return res.blob(); })
       .then(blob => {
         const a = document.createElement("a");
         a.href = URL.createObjectURL(blob);
-        a.download = "brandtonic-extension.zip";
+        a.download = "b-design-extension.zip";
         a.click();
         URL.revokeObjectURL(a.href);
       })
@@ -94,7 +94,7 @@ export default function Dashboard() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Chrome className="h-5 w-5" />
-              Install BrandTonic Extension
+              Install B Design Extension
             </DialogTitle>
             <DialogDescription>
               Generate on-brand creatives from any image on the web with a right-click.
