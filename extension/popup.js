@@ -1,4 +1,12 @@
-// B Design popup — tabs: New (defaults + pending image) | History (last 20)
+// B Design popup — auto-signs-in from the web app session when available.
+// -----------------------------------------------------------------------------
+// Tabs: New (defaults + pending image) | History (last 20)
+// Popup lifecycle notes:
+//  • Chrome auto-closes popups when they lose focus. We avoid focus-loss
+//    triggers (no auto tab-switch on send, and history clicks open URLs with
+//    `noopener` so the current tab stays focused).
+//  • On open we check storage for a session pushed in by app-sync.js; if
+//    present we skip the login view entirely.
 // -----------------------------------------------------------------------------
 const SUPABASE_URL = "https://jibbeetyogbfkjvazysy.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImppYmJlZXR5b2diZmtqdmF6eXN5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyMzUwNzYsImV4cCI6MjA4ODgxMTA3Nn0.C20BJLWyo9A3c2ouT097uddJrrJJwM-K09RhEQ3bf0E";
@@ -9,6 +17,7 @@ const loginView = $("login-view");
 const mainView  = $("main-view");
 const loginError = $("login-error");
 const loginBtn = $("login-btn");
+const openAppBtn = $("open-app-btn");
 const logoutBtn = $("logout-btn");
 const brandSel = $("brand-select");
 const formatGrid = $("format-grid");
@@ -72,6 +81,18 @@ function authHeaders() {
   };
 }
 
+// React to session pushes from app-sync.js while popup is open.
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== "local" || !changes.bt_session) return;
+  const next = changes.bt_session.newValue;
+  if (next?.access_token && (!session || session.access_token !== next.access_token)) {
+    session = next;
+    if (mainView.hidden) initMain();
+  } else if (!next && !mainView.hidden) {
+    switchView("login");
+  }
+});
+
 // ── Login ────────────────────────────────────────────────────────────────────
 loginBtn.addEventListener("click", async () => {
   const emailRaw = $("login-email").value.trim();
@@ -93,8 +114,20 @@ loginBtn.addEventListener("click", async () => {
   } catch (e) {
     showErr(loginError, e.message);
   } finally {
-    loginBtn.disabled = false; loginBtn.textContent = "Sign In";
+    loginBtn.disabled = false; loginBtn.textContent = "Sign in";
   }
+});
+
+// Submit login on Enter as well.
+["login-email", "login-password"].forEach((id) => {
+  $(id)?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); loginBtn.click(); }
+  });
+});
+
+openAppBtn?.addEventListener("click", (e) => {
+  e.preventDefault();
+  chrome.tabs.create({ url: APP_URL, active: true });
 });
 
 logoutBtn.addEventListener("click", async () => {
@@ -107,13 +140,11 @@ function showErr(el, msg) {
   el.textContent = msg;
   el.className = "alert alert-err";
   el.hidden = false;
-  setTimeout(() => { el.hidden = true; }, 5000);
 }
 function showOk(el, msg) {
   el.textContent = msg;
   el.className = "alert alert-ok";
   el.hidden = false;
-  setTimeout(() => { el.hidden = true; }, 4000);
 }
 
 // ── Format grid ──────────────────────────────────────────────────────────────
@@ -136,25 +167,36 @@ async function persistDefaults() {
 
 // ── Brands ───────────────────────────────────────────────────────────────────
 async function loadBrands() {
-  brandSel.innerHTML = "<option>Loading…</option>";
+  brandSel.textContent = "";
+  const loading = document.createElement("option");
+  loading.textContent = "Loading…";
+  brandSel.appendChild(loading);
   try {
     const r = await fetch(`${SUPABASE_URL}/rest/v1/brands?select=id,name&archived=eq.false&order=name`, {
       headers: authHeaders(),
     });
     const list = r.ok ? await r.json() : [];
+    brandSel.textContent = "";
     if (!list.length) {
-      brandSel.innerHTML = `<option value="">No brands — create one in B Design</option>`;
+      const opt = document.createElement("option");
+      opt.value = ""; opt.textContent = "No brands — create one in B Design";
+      brandSel.appendChild(opt);
       return;
     }
     const { bt_defaults } = await chrome.storage.local.get(["bt_defaults"]);
     const defId = bt_defaults?.brandId;
-    brandSel.innerHTML = list.map((b) =>
-      `<option value="${b.id}" ${b.id === defId ? "selected" : ""}>${escapeHtml(b.name)}</option>`
-    ).join("");
-    // Cache for content script
+    for (const b of list) {
+      const opt = document.createElement("option");
+      opt.value = b.id; opt.textContent = b.name;
+      if (b.id === defId) opt.selected = true;
+      brandSel.appendChild(opt);
+    }
     await chrome.storage.local.set({ bt_brands: { ts: Date.now(), list } });
   } catch {
-    brandSel.innerHTML = `<option value="">Failed to load brands</option>`;
+    brandSel.textContent = "";
+    const opt = document.createElement("option");
+    opt.value = ""; opt.textContent = "Failed to load brands";
+    brandSel.appendChild(opt);
   }
 }
 
@@ -175,17 +217,18 @@ sendPendingBtn.addEventListener("click", async () => {
   if (!brandId || !pendingImageUrl) return;
   sendPendingBtn.disabled = true;
   sendPendingBtn.textContent = "Sending…";
-  const res = await chrome.runtime.sendMessage({
-    type: "enqueue",
-    payload: { imageUrl: pendingImageUrl, brandId, format: selectedFormat },
-  }).catch((e) => ({ ok: false, error: e?.message || "Failed" }));
+  let res;
+  try {
+    res = await chrome.runtime.sendMessage({
+      type: "enqueue",
+      payload: { imageUrl: pendingImageUrl, brandId, format: selectedFormat },
+    });
+  } catch (e) { res = { ok: false, error: e?.message || "Failed" }; }
   if (res?.ok) {
     showOk(newMsg, "Sent! Your creative is generating on the server.");
     pendingImageUrl = "";
     show(pendingBox, false);
     show(sendPendingBtn, false);
-    // Jump to history tab so user can watch it progress.
-    document.querySelector('.tab[data-tab="history"]').click();
   } else {
     showErr(newMsg, res?.error || "Failed to send");
   }
@@ -203,56 +246,61 @@ async function loadHistory() {
     if (!r.ok) throw new Error("history fetch failed");
     const rows = await r.json();
     renderHistory(rows);
-    // Auto-poll while any non-final row exists.
-    const hasPending = rows.some((r) => !["completed","failed"].includes(r.status));
-    if (hasPending) schedulePoll();
-    else stopPoll();
+    const hasPending = rows.some((row) => !["completed","failed"].includes(row.status));
+    if (hasPending) schedulePoll(); else stopPoll();
   } catch (e) {
-    historyList.innerHTML = `<li><div class="meta"><div class="name">Failed to load history</div><div class="time">${escapeHtml(e.message)}</div></div></li>`;
+    historyList.textContent = "";
+    const li = document.createElement("li");
+    li.textContent = `Failed to load history: ${e.message}`;
+    historyList.appendChild(li);
   }
 }
 
 function renderHistory(rows) {
-  if (!rows.length) { show(historyEmpty, true); historyList.innerHTML = ""; return; }
+  historyList.textContent = "";
+  if (!rows.length) { show(historyEmpty, true); return; }
   show(historyEmpty, false);
-  historyList.innerHTML = rows.map((r) => {
+  for (const r of rows) {
     const isDone = r.status === "completed" && r.output_image_url;
     const isFail = r.status === "failed";
     const thumb = isDone ? r.output_image_url : r.reference_image_url;
-    const badge = isDone ? `<span class="badge done">Done</span>`
-                : isFail ? `<span class="badge fail">Failed</span>`
-                : `<span class="badge busy"><span class="spinner"></span> ${escapeHtml(r.status || "queued")}</span>`;
-    const brand = r.brand?.name || "Brand";
-    const time  = timeAgo(new Date(r.created_at));
-    return `<li data-id="${r.id}" data-done="${isDone ? '1':'0'}" data-url="${escapeAttr(r.output_image_url || '')}">
-      <img class="thumb" src="${escapeAttr(thumb || '')}" onerror="this.style.visibility='hidden'" />
-      <div class="meta">
-        <div class="name">${escapeHtml(brand)} · ${escapeHtml(r.output_format || '')}</div>
-        <div class="time">${time}</div>
-      </div>
-      ${badge}
-    </li>`;
-  }).join("");
-  historyList.querySelectorAll("li").forEach((li) => {
+
+    const li = document.createElement("li");
+    const img = document.createElement("img");
+    img.className = "thumb"; img.src = thumb || "";
+    img.addEventListener("error", () => { img.style.visibility = "hidden"; });
+    const meta = document.createElement("div"); meta.className = "meta";
+    const name = document.createElement("div"); name.className = "name";
+    name.textContent = `${r.brand?.name || "Brand"} · ${r.output_format || ""}`;
+    const time = document.createElement("div"); time.className = "time";
+    time.textContent = timeAgo(new Date(r.created_at));
+    meta.append(name, time);
+
+    const badge = document.createElement("span");
+    badge.className = "badge " + (isDone ? "done" : isFail ? "fail" : "busy");
+    if (isDone) badge.textContent = "Done";
+    else if (isFail) badge.textContent = "Failed";
+    else {
+      const sp = document.createElement("span"); sp.className = "spinner";
+      badge.appendChild(sp);
+      badge.appendChild(document.createTextNode(" " + (r.status || "queued")));
+    }
+
+    li.append(img, meta, badge);
     li.addEventListener("click", () => {
-      const done = li.dataset.done === "1";
-      const url  = li.dataset.url;
-      if (done && url) {
-        chrome.tabs.create({ url });
-      } else {
-        chrome.tabs.create({ url: `${APP_URL}/history` });
-      }
+      const url = isDone && r.output_image_url ? r.output_image_url : `${APP_URL}/history`;
+      // Open in background tab so the popup stays open.
+      chrome.tabs.create({ url, active: false });
     });
-  });
+    historyList.appendChild(li);
+  }
 }
 
 function schedulePoll() {
   if (pollTimer) return;
   pollTimer = setInterval(loadHistory, 5000);
 }
-function stopPoll() {
-  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
-}
+function stopPoll() { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
 window.addEventListener("beforeunload", stopPoll);
 
 function timeAgo(d) {
@@ -262,13 +310,6 @@ function timeAgo(d) {
   const h = Math.floor(m / 60); if (h < 24) return `${h}h ago`;
   const dd = Math.floor(h / 24); return `${dd}d ago`;
 }
-
-function escapeHtml(s) {
-  return String(s ?? "").replace(/[&<>"']/g, (c) => ({
-    "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
-  }[c]));
-}
-function escapeAttr(s) { return escapeHtml(s); }
 
 // ── Init ─────────────────────────────────────────────────────────────────────
 async function initMain() {
