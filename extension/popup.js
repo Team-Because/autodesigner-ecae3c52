@@ -1,283 +1,291 @@
-// --- Config ---
+// BDesign popup — tabs: New (defaults + pending image) | History (last 20)
+// -----------------------------------------------------------------------------
 const SUPABASE_URL = "https://jibbeetyogbfkjvazysy.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImppYmJlZXR5b2diZmtqdmF6eXN5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyMzUwNzYsImV4cCI6MjA4ODgxMTA3Nn0.C20BJLWyo9A3c2ouT097uddJrrJJwM-K09RhEQ3bf0E";
 const APP_URL = "https://autodesigner.lovable.app";
 
-// --- DOM refs ---
-const loginView = document.getElementById("login-view");
-const mainView = document.getElementById("main-view");
-const loginBtn = document.getElementById("login-btn");
-const logoutBtn = document.getElementById("logout-btn");
-const loginEmail = document.getElementById("login-email");
-const loginPassword = document.getElementById("login-password");
-const loginError = document.getElementById("login-error");
-const mainError = document.getElementById("main-error");
-const noImageState = document.getElementById("no-image-state");
-const generateForm = document.getElementById("generate-form");
-const generatingState = document.getElementById("generating-state");
-const resultState = document.getElementById("result-state");
-const errorState = document.getElementById("error-state");
-const errorStateMsg = document.getElementById("error-state-msg");
-const retryBtn = document.getElementById("retry-btn");
-const previewImage = document.getElementById("preview-image");
-const brandSelect = document.getElementById("brand-select");
-const formatGrid = document.getElementById("format-grid");
-const generateBtn = document.getElementById("generate-btn");
-const resultImage = document.getElementById("result-image");
-const downloadBtn = document.getElementById("download-btn");
-const newBtn = document.getElementById("new-btn");
-const historyLink = document.getElementById("history-link");
+const $ = (id) => document.getElementById(id);
+const loginView = $("login-view");
+const mainView  = $("main-view");
+const loginError = $("login-error");
+const loginBtn = $("login-btn");
+const logoutBtn = $("logout-btn");
+const brandSel = $("brand-select");
+const formatGrid = $("format-grid");
+const pendingBox = $("pending-image");
+const pendingImg = $("pending-preview");
+const sendPendingBtn = $("send-pending-btn");
+const newMsg = $("new-msg");
+const historyList = $("history-list");
+const historyEmpty = $("history-empty");
 
-let selectedFormat = "square";
 let session = null;
-let selectedImageUrl = "";
+let selectedFormat = "square";
+let pendingImageUrl = "";
+let pollTimer = null;
 
-// --- Helpers ---
-function showView(view) {
-  loginView.style.display = "none";
-  mainView.style.display = "none";
-  view.style.display = "block";
+function show(el, on = true) { if (el) el.hidden = !on; }
+function switchView(v) {
+  loginView.hidden = v !== "login";
+  mainView.hidden  = v !== "main";
 }
 
-function showMainSection(section) {
-  noImageState.style.display = "none";
-  generateForm.style.display = "none";
-  generatingState.style.display = "none";
-  resultState.style.display = "none";
-  errorState.style.display = "none";
-  section.style.display = "block";
-}
-
-function showError(el, msg) {
-  el.textContent = msg;
-  el.style.display = "block";
-  setTimeout(() => { el.style.display = "none"; }, 5000);
-}
-
-async function supabaseRequest(path, options = {}) {
-  const headers = {
-    "apikey": SUPABASE_ANON_KEY,
-    "Content-Type": "application/json",
-    ...options.headers,
-  };
-  if (session?.access_token) {
-    headers["Authorization"] = `Bearer ${session.access_token}`;
-  }
-  return fetch(`${SUPABASE_URL}${path}`, { ...options, headers });
-}
-
-// --- Auth ---
-async function signIn(email, password) {
-  if (!email.includes("@")) {
-    email = `${email}@internal.brandtonic`;
-  }
-  const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
-    method: "POST",
-    headers: { "apikey": SUPABASE_ANON_KEY, "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password }),
+// ── Tabs ─────────────────────────────────────────────────────────────────────
+document.querySelectorAll(".tab").forEach((tab) => {
+  tab.addEventListener("click", () => {
+    document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
+    document.querySelectorAll(".tab-panel").forEach((p) => p.classList.remove("active"));
+    tab.classList.add("active");
+    $(`tab-${tab.dataset.tab}`).classList.add("active");
+    if (tab.dataset.tab === "history") loadHistory();
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error_description || data.msg || "Login failed");
-  return data;
-}
+});
 
+// ── Session ──────────────────────────────────────────────────────────────────
 async function loadSession() {
-  const stored = await chrome.storage.local.get(["bt_session"]);
-  if (stored.bt_session) {
-    session = stored.bt_session;
-    const exp = session.expires_at * 1000;
-    if (Date.now() > exp) {
-      try {
-        const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
-          method: "POST",
-          headers: { "apikey": SUPABASE_ANON_KEY, "Content-Type": "application/json" },
-          body: JSON.stringify({ refresh_token: session.refresh_token }),
-        });
-        if (!res.ok) throw new Error("Refresh failed");
-        session = await res.json();
-        await chrome.storage.local.set({ bt_session: session });
-      } catch {
-        session = null;
-        await chrome.storage.local.remove(["bt_session"]);
-      }
-    }
-  }
-  return session;
-}
-
-// --- Brands ---
-async function loadBrands() {
-  const res = await supabaseRequest("/rest/v1/brands?select=id,name&order=name");
-  if (!res.ok) return [];
-  return res.json();
-}
-
-async function populateBrands() {
-  brandSelect.innerHTML = '<option value="">Loading…</option>';
+  const { bt_session } = await chrome.storage.local.get(["bt_session"]);
+  if (!bt_session) return null;
+  const expMs = (bt_session.expires_at || 0) * 1000;
+  if (Date.now() < expMs - 60_000) { session = bt_session; return session; }
   try {
-    const brands = await loadBrands();
-    if (brands.length === 0) {
-      brandSelect.innerHTML = '<option value="">No brands found</option>';
-      return;
-    }
-    brandSelect.innerHTML = brands.map(b => `<option value="${b.id}">${b.name}</option>`).join("");
-  } catch {
-    brandSelect.innerHTML = '<option value="">Failed to load brands</option>';
-  }
-}
-
-// --- Format selection ---
-formatGrid.addEventListener("click", (e) => {
-  const option = e.target.closest(".format-option");
-  if (!option) return;
-  formatGrid.querySelectorAll(".format-option").forEach(o => o.classList.remove("active"));
-  option.classList.add("active");
-  selectedFormat = option.dataset.format;
-});
-
-// --- Generate (delegate to background) ---
-async function generateCreative() {
-  const brandId = brandSelect.value;
-  if (!brandId) { showError(mainError, "Please select a brand."); return; }
-  if (!selectedImageUrl) { showError(mainError, "No image selected."); return; }
-
-  showMainSection(generatingState);
-
-  chrome.runtime.sendMessage({
-    type: "generate",
-    payload: {
-      brandId,
-      imageUrl: selectedImageUrl,
-      format: selectedFormat,
-      session: { access_token: session.access_token }
-    }
-  });
-}
-
-// --- Listen for results from background ---
-chrome.runtime.onMessage.addListener((message) => {
-  if (message.type === "generation_complete") {
-    handleResult(message.result);
-  }
-});
-
-function handleResult(result) {
-  if (result.status === "complete" && result.imageUrl) {
-    resultImage.src = result.imageUrl;
-    showMainSection(resultState);
-  } else if (result.status === "error") {
-    errorStateMsg.textContent = result.error || "Something went wrong.";
-    showMainSection(errorState);
-  }
-}
-
-// --- Download ---
-downloadBtn.addEventListener("click", async () => {
-  const url = resultImage.src;
-  if (!url) return;
-  try {
-    const res = await fetch(url);
-    const blob = await res.blob();
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `brandtonic-creative-${Date.now()}.png`;
-    a.click();
-    URL.revokeObjectURL(a.href);
-  } catch {
-    showError(mainError, "Download failed.");
-  }
-});
-
-// --- New ---
-newBtn.addEventListener("click", async () => {
-  await chrome.storage.local.remove(["bt_lastResult"]);
-  showMainSection(generateForm);
-});
-
-// --- Retry ---
-retryBtn.addEventListener("click", () => {
-  showMainSection(generateForm);
-});
-
-// --- History link ---
-historyLink.addEventListener("click", (e) => {
-  e.preventDefault();
-  chrome.tabs.create({ url: `${APP_URL}/history` });
-});
-
-// --- Login handler ---
-loginBtn.addEventListener("click", async () => {
-  const email = loginEmail.value.trim();
-  const password = loginPassword.value;
-  if (!email || !password) { showError(loginError, "Enter your credentials."); return; }
-  loginBtn.disabled = true;
-  loginBtn.textContent = "Signing in…";
-  try {
-    session = await signIn(email, password);
+    const r = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
+      method: "POST",
+      headers: { apikey: SUPABASE_ANON_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: bt_session.refresh_token }),
+    });
+    if (!r.ok) throw new Error("refresh failed");
+    session = await r.json();
     await chrome.storage.local.set({ bt_session: session });
-    await initMainView();
-  } catch (err) {
-    showError(loginError, err.message);
+    return session;
+  } catch {
+    session = null;
+    await chrome.storage.local.remove(["bt_session"]);
+    return null;
+  }
+}
+
+function authHeaders() {
+  return {
+    apikey: SUPABASE_ANON_KEY,
+    Authorization: `Bearer ${session.access_token}`,
+    "Content-Type": "application/json",
+  };
+}
+
+// ── Login ────────────────────────────────────────────────────────────────────
+loginBtn.addEventListener("click", async () => {
+  const emailRaw = $("login-email").value.trim();
+  const password = $("login-password").value;
+  if (!emailRaw || !password) return showErr(loginError, "Enter your credentials.");
+  const email = emailRaw.includes("@") ? emailRaw : `${emailRaw}@internal.brandtonic`;
+  loginBtn.disabled = true; loginBtn.textContent = "Signing in…";
+  try {
+    const r = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+      method: "POST",
+      headers: { apikey: SUPABASE_ANON_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error_description || data.msg || "Sign-in failed");
+    session = data;
+    await chrome.storage.local.set({ bt_session: session });
+    await initMain();
+  } catch (e) {
+    showErr(loginError, e.message);
   } finally {
-    loginBtn.disabled = false;
-    loginBtn.textContent = "Sign In";
+    loginBtn.disabled = false; loginBtn.textContent = "Sign In";
   }
 });
 
-// --- Logout ---
 logoutBtn.addEventListener("click", async () => {
   session = null;
-  await chrome.storage.local.remove(["bt_session", "bt_lastResult"]);
-  showView(loginView);
+  await chrome.storage.local.remove(["bt_session", "bt_defaults", "bt_brands", "bt_pending"]);
+  switchView("login");
 });
 
-// --- Init ---
-async function initMainView() {
-  showView(mainView);
-  await populateBrands();
+function showErr(el, msg) {
+  el.textContent = msg;
+  el.className = "alert alert-err";
+  el.hidden = false;
+  setTimeout(() => { el.hidden = true; }, 5000);
+}
+function showOk(el, msg) {
+  el.textContent = msg;
+  el.className = "alert alert-ok";
+  el.hidden = false;
+  setTimeout(() => { el.hidden = true; }, 4000);
+}
 
-  // Check for in-progress or completed result from background
-  const { bt_lastResult } = await chrome.storage.local.get(["bt_lastResult"]);
-  if (bt_lastResult) {
-    const age = Date.now() - (bt_lastResult.timestamp || 0);
-    const isRecent = age < 10 * 60 * 1000; // 10 minutes
+// ── Format grid ──────────────────────────────────────────────────────────────
+formatGrid.addEventListener("click", async (e) => {
+  const el = e.target.closest(".fmt");
+  if (!el) return;
+  formatGrid.querySelectorAll(".fmt").forEach((n) => n.classList.remove("active"));
+  el.classList.add("active");
+  selectedFormat = el.dataset.f;
+  await persistDefaults();
+});
 
-    if (bt_lastResult.status === "generating" && isRecent) {
-      showMainSection(generatingState);
+brandSel.addEventListener("change", persistDefaults);
+
+async function persistDefaults() {
+  await chrome.storage.local.set({
+    bt_defaults: { brandId: brandSel.value, format: selectedFormat },
+  });
+}
+
+// ── Brands ───────────────────────────────────────────────────────────────────
+async function loadBrands() {
+  brandSel.innerHTML = "<option>Loading…</option>";
+  try {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/brands?select=id,name&archived=eq.false&order=name`, {
+      headers: authHeaders(),
+    });
+    const list = r.ok ? await r.json() : [];
+    if (!list.length) {
+      brandSel.innerHTML = `<option value="">No brands — create one in BDesign</option>`;
       return;
     }
-    if (bt_lastResult.status === "complete" && bt_lastResult.imageUrl && isRecent) {
-      resultImage.src = bt_lastResult.imageUrl;
-      showMainSection(resultState);
-      return;
-    }
-    if (bt_lastResult.status === "error" && isRecent) {
-      errorStateMsg.textContent = bt_lastResult.error || "Something went wrong.";
-      showMainSection(errorState);
-      return;
-    }
-  }
-
-  // Check for stored image URL from context menu
-  const stored = await chrome.storage.local.get(["selectedImageUrl"]);
-  if (stored.selectedImageUrl) {
-    selectedImageUrl = stored.selectedImageUrl;
-    previewImage.src = selectedImageUrl;
-    showMainSection(generateForm);
-    await chrome.storage.local.remove(["selectedImageUrl"]);
-  } else {
-    showMainSection(noImageState);
+    const { bt_defaults } = await chrome.storage.local.get(["bt_defaults"]);
+    const defId = bt_defaults?.brandId;
+    brandSel.innerHTML = list.map((b) =>
+      `<option value="${b.id}" ${b.id === defId ? "selected" : ""}>${escapeHtml(b.name)}</option>`
+    ).join("");
+    // Cache for content script
+    await chrome.storage.local.set({ bt_brands: { ts: Date.now(), list } });
+  } catch {
+    brandSel.innerHTML = `<option value="">Failed to load brands</option>`;
   }
 }
 
-generateBtn.addEventListener("click", generateCreative);
+// ── Pending image (from context menu) ────────────────────────────────────────
+async function loadPending() {
+  const { selectedImageUrl } = await chrome.storage.local.get(["selectedImageUrl"]);
+  if (selectedImageUrl) {
+    pendingImageUrl = selectedImageUrl;
+    pendingImg.src = pendingImageUrl;
+    show(pendingBox, true);
+    show(sendPendingBtn, true);
+    await chrome.storage.local.remove(["selectedImageUrl"]);
+  }
+}
 
-// --- Boot ---
+sendPendingBtn.addEventListener("click", async () => {
+  const brandId = brandSel.value;
+  if (!brandId || !pendingImageUrl) return;
+  sendPendingBtn.disabled = true;
+  sendPendingBtn.textContent = "Sending…";
+  const res = await chrome.runtime.sendMessage({
+    type: "enqueue",
+    payload: { imageUrl: pendingImageUrl, brandId, format: selectedFormat },
+  }).catch((e) => ({ ok: false, error: e?.message || "Failed" }));
+  if (res?.ok) {
+    showOk(newMsg, "Sent! Your creative is generating on the server.");
+    pendingImageUrl = "";
+    show(pendingBox, false);
+    show(sendPendingBtn, false);
+    // Jump to history tab so user can watch it progress.
+    document.querySelector('.tab[data-tab="history"]').click();
+  } else {
+    showErr(newMsg, res?.error || "Failed to send");
+  }
+  sendPendingBtn.disabled = false;
+  sendPendingBtn.textContent = "Send to BDesign";
+});
+
+// ── History ──────────────────────────────────────────────────────────────────
+async function loadHistory() {
+  try {
+    const r = await fetch(
+      `${SUPABASE_URL}/rest/v1/generations?select=id,brand_id,reference_image_url,output_image_url,status,output_format,created_at,brand:brands(name)&order=created_at.desc&limit=20`,
+      { headers: authHeaders() },
+    );
+    if (!r.ok) throw new Error("history fetch failed");
+    const rows = await r.json();
+    renderHistory(rows);
+    // Auto-poll while any non-final row exists.
+    const hasPending = rows.some((r) => !["completed","failed"].includes(r.status));
+    if (hasPending) schedulePoll();
+    else stopPoll();
+  } catch (e) {
+    historyList.innerHTML = `<li><div class="meta"><div class="name">Failed to load history</div><div class="time">${escapeHtml(e.message)}</div></div></li>`;
+  }
+}
+
+function renderHistory(rows) {
+  if (!rows.length) { show(historyEmpty, true); historyList.innerHTML = ""; return; }
+  show(historyEmpty, false);
+  historyList.innerHTML = rows.map((r) => {
+    const isDone = r.status === "completed" && r.output_image_url;
+    const isFail = r.status === "failed";
+    const thumb = isDone ? r.output_image_url : r.reference_image_url;
+    const badge = isDone ? `<span class="badge done">Done</span>`
+                : isFail ? `<span class="badge fail">Failed</span>`
+                : `<span class="badge busy"><span class="spinner"></span> ${escapeHtml(r.status || "queued")}</span>`;
+    const brand = r.brand?.name || "Brand";
+    const time  = timeAgo(new Date(r.created_at));
+    return `<li data-id="${r.id}" data-done="${isDone ? '1':'0'}" data-url="${escapeAttr(r.output_image_url || '')}">
+      <img class="thumb" src="${escapeAttr(thumb || '')}" onerror="this.style.visibility='hidden'" />
+      <div class="meta">
+        <div class="name">${escapeHtml(brand)} · ${escapeHtml(r.output_format || '')}</div>
+        <div class="time">${time}</div>
+      </div>
+      ${badge}
+    </li>`;
+  }).join("");
+  historyList.querySelectorAll("li").forEach((li) => {
+    li.addEventListener("click", () => {
+      const done = li.dataset.done === "1";
+      const url  = li.dataset.url;
+      if (done && url) {
+        chrome.tabs.create({ url });
+      } else {
+        chrome.tabs.create({ url: `${APP_URL}/history` });
+      }
+    });
+  });
+}
+
+function schedulePoll() {
+  if (pollTimer) return;
+  pollTimer = setInterval(loadHistory, 5000);
+}
+function stopPoll() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+}
+window.addEventListener("beforeunload", stopPoll);
+
+function timeAgo(d) {
+  const s = Math.max(1, Math.floor((Date.now() - d.getTime()) / 1000));
+  if (s < 60) return `${s}s ago`;
+  const m = Math.floor(s / 60); if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60); if (h < 24) return `${h}h ago`;
+  const dd = Math.floor(h / 24); return `${dd}d ago`;
+}
+
+function escapeHtml(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) => ({
+    "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+  }[c]));
+}
+function escapeAttr(s) { return escapeHtml(s); }
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+async function initMain() {
+  switchView("main");
+  await loadBrands();
+  const { bt_defaults } = await chrome.storage.local.get(["bt_defaults"]);
+  if (bt_defaults?.format) {
+    selectedFormat = bt_defaults.format;
+    formatGrid.querySelectorAll(".fmt").forEach((n) => {
+      n.classList.toggle("active", n.dataset.f === selectedFormat);
+    });
+  }
+  await loadPending();
+}
+
 (async () => {
   await loadSession();
-  if (session) {
-    await initMainView();
-  } else {
-    showView(loginView);
-  }
+  if (session) await initMain();
+  else switchView("login");
 })();
