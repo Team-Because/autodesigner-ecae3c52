@@ -1,4 +1,4 @@
-# MakeMyAd · by Because — robots.txt
+# B Design · by Because — robots.txt
 # Allow all standard crawlers
 User-agent: *
 Allow: /

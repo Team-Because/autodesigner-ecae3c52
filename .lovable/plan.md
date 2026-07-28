@@ -1,23 +1,23 @@
 
-# Save to BDesign — Pinterest-style extension v2
+# Save to B Design — Pinterest-style extension v2
 
 Turns the current right-click extension into a one-click "hover + save" tool, moves the whole generation pipeline server-side so closing the tab or popup never kills a job, and puts live history inside the popup so users rarely need to open the site.
 
 ## What the user gets
 
 **On any webpage**
-- Hover any image → small circular "Save to BDesign" button appears in the top-right of the image (Pinterest pattern).
+- Hover any image → small circular "Save to B Design" button appears in the top-right of the image (Pinterest pattern).
 - Click it → a tiny inline chooser opens right next to the button with:
   - Brand dropdown (defaults to last-used, remembered per user)
   - Format chips (Square / Landscape / Portrait / Story — defaults to last-used)
   - "Save" button
-- Click Save → button flips to a spinner for ~1s → checkmark "Sent to BDesign" toast → job is now server-side, page can be closed.
+- Click Save → button flips to a spinner for ~1s → checkmark "Sent to B Design" toast → job is now server-side, page can be closed.
 - Right-click on any image still works as a fallback with the same one-click flow (uses last brand + format, no popup needed).
 
 **In the extension popup**
 - Two tabs: **New** and **History**.
 - **New** tab: only used when the user opens the popup directly without a saved image (shows the "right-click or hover any image" hint) or to change the default brand/format.
-- **History** tab: last 20 generations for the signed-in user, each row shows thumbnail, brand name, status badge (Queued / Generating / Done / Failed), timestamp. Auto-refreshes every 5s while any row is not Done/Failed. Click a Done row → open large preview + Download + "Open in BDesign".
+- **History** tab: last 20 generations for the signed-in user, each row shows thumbnail, brand name, status badge (Queued / Generating / Done / Failed), timestamp. Auto-refreshes every 5s while any row is not Done/Failed. Click a Done row → open large preview + Download + "Open in B Design".
 - Chrome notification when a job finishes, click → opens popup on the History tab with that row highlighted.
 
 ## Why this is tab-independent

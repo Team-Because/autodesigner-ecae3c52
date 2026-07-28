@@ -1,6 +1,6 @@
-// BDesign extension — background service worker (MV3)
+// B Design extension — background service worker (MV3)
 // -----------------------------------------------------------------------------
-// One-click "Save to BDesign" pipeline:
+// One-click "Save to B Design" pipeline:
 //   1. Content script / context menu → { type: "enqueue", imageUrl, brandId, format }
 //   2. This SW posts to the `enqueue-generation` edge function
 //   3. Edge function returns { generationId } instantly; the server pipeline
@@ -17,7 +17,7 @@ const APP_URL = "https://autodesigner.lovable.app";
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({
     id: "bdesign-generate",
-    title: "Save to BDesign",
+    title: "Save to B Design",
     contexts: ["image"],
   });
 });
@@ -81,7 +81,7 @@ async function getSession() {
 
 async function authHeaders() {
   const s = await getSession();
-  if (!s) throw new Error("Not signed in — open the BDesign extension and sign in.");
+  if (!s) throw new Error("Not signed in — open the B Design extension and sign in.");
   return {
     apikey: SUPABASE_ANON_KEY,
     Authorization: `Bearer ${s.access_token}`,
@@ -136,7 +136,7 @@ function notifyEnqueue(res) {
     chrome.notifications.create(`bd-queued-${res.generationId}`, {
       type: "basic",
       iconUrl: "icon.png",
-      title: "Sent to BDesign",
+      title: "Sent to B Design",
       message: "Your creative is being generated. You can close the tab — we'll notify you when it's done.",
       priority: 1,
     });
@@ -144,7 +144,7 @@ function notifyEnqueue(res) {
     chrome.notifications.create(`bd-error-${Date.now()}`, {
       type: "basic",
       iconUrl: "icon.png",
-      title: "Couldn't send to BDesign",
+      title: "Couldn't send to B Design",
       message: res?.error || "Unknown error",
       priority: 2,
     });
@@ -188,7 +188,7 @@ async function pollPending() {
         type: "basic",
         iconUrl: "icon.png",
         title: "Creative ready 🎨",
-        message: "Your BDesign creative is done. Click to view.",
+        message: "Your B Design creative is done. Click to view.",
         priority: 2,
       });
     } else if (row.status === "failed") {
@@ -196,7 +196,7 @@ async function pollPending() {
         type: "basic",
         iconUrl: "icon.png",
         title: "Generation failed",
-        message: "One of your BDesign jobs failed. Open the popup for details.",
+        message: "One of your B Design jobs failed. Open the popup for details.",
         priority: 2,
       });
     } else {

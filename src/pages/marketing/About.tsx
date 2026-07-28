@@ -13,8 +13,8 @@ export default function About() {
   return (
     <>
       <SEO
-        title="About — BDesign by Because"
-        description="BDesign started as an internal tool at Because, a branding and marketing agency in Ahmedabad. It worked well enough that we're opening it up."
+        title="About — B Design by Because"
+        description="B Design started as an internal tool at Because, a branding and marketing agency in Ahmedabad. It worked well enough that we're opening it up."
         path="/about"
       />
 
@@ -22,7 +22,7 @@ export default function About() {
         <div className="lg:col-span-7">
           <p className="font-mono-sys text-[11px] uppercase tracking-[0.16em] text-blue-700">about</p>
           <h1 className="mt-4 text-[40px] md:text-[52px] font-extrabold tracking-tight leading-[1.05]">
-            BDesign started as an{" "}
+            B Design started as an{" "}
             <span className="yellow-underline">internal tool</span>.
           </h1>
 
@@ -31,7 +31,7 @@ export default function About() {
               We're <span className="font-semibold text-ink">Because</span> — a branding and marketing agency in Ahmedabad (legally, Rellow Digital Private Limited). We work across real estate, education, and consumer brands. Like every agency, we spent afternoons re-briefing the same brand context every time a client sent us a new creative reference.
             </p>
             <p>
-              BDesign was the fix. A place where each brand lived once, properly. Any reference could be dropped in and rebuilt without a designer walking the model through the brand book again. Our team stopped opening Photoshop for adaptation work.
+              B Design was the fix. A place where each brand lived once, properly. Any reference could be dropped in and rebuilt without a designer walking the model through the brand book again. Our team stopped opening Photoshop for adaptation work.
             </p>
             <p>
               We're opening it up because the problem isn't ours alone.

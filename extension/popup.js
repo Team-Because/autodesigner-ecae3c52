@@ -1,4 +1,4 @@
-// BDesign popup — tabs: New (defaults + pending image) | History (last 20)
+// B Design popup — tabs: New (defaults + pending image) | History (last 20)
 // -----------------------------------------------------------------------------
 const SUPABASE_URL = "https://jibbeetyogbfkjvazysy.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImppYmJlZXR5b2diZmtqdmF6eXN5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyMzUwNzYsImV4cCI6MjA4ODgxMTA3Nn0.C20BJLWyo9A3c2ouT097uddJrrJJwM-K09RhEQ3bf0E";
@@ -77,7 +77,7 @@ loginBtn.addEventListener("click", async () => {
   const emailRaw = $("login-email").value.trim();
   const password = $("login-password").value;
   if (!emailRaw || !password) return showErr(loginError, "Enter your credentials.");
-  const email = emailRaw.includes("@") ? emailRaw : `${emailRaw}@internal.brandtonic`;
+  const email = emailRaw.includes("@") ? emailRaw : `${emailRaw}@internal.bdesign`;
   loginBtn.disabled = true; loginBtn.textContent = "Signing in…";
   try {
     const r = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
@@ -143,7 +143,7 @@ async function loadBrands() {
     });
     const list = r.ok ? await r.json() : [];
     if (!list.length) {
-      brandSel.innerHTML = `<option value="">No brands — create one in BDesign</option>`;
+      brandSel.innerHTML = `<option value="">No brands — create one in B Design</option>`;
       return;
     }
     const { bt_defaults } = await chrome.storage.local.get(["bt_defaults"]);
@@ -190,7 +190,7 @@ sendPendingBtn.addEventListener("click", async () => {
     showErr(newMsg, res?.error || "Failed to send");
   }
   sendPendingBtn.disabled = false;
-  sendPendingBtn.textContent = "Send to BDesign";
+  sendPendingBtn.textContent = "Send to B Design";
 });
 
 // ── History ──────────────────────────────────────────────────────────────────

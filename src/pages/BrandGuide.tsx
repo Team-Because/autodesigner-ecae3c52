@@ -30,9 +30,9 @@ import { Link } from "react-router-dom";
  *   ## VISUAL NEVERS
  *   ## CONTENT NEVERS
  */
-const MASTER_PROMPT = `🚀 BDesign Brand Setup — Master Prompt (v4)
+const MASTER_PROMPT = `🚀 B Design Brand Setup — Master Prompt (v4)
 
-You are a brand strategist, visual language analyst, and prompt engineer. Take everything I give you — raw notes, docs, websites, old creatives, reference images, screenshots — and produce a perfectly structured brand profile for the BDesign creative generation system.
+You are a brand strategist, visual language analyst, and prompt engineer. Take everything I give you — raw notes, docs, websites, old creatives, reference images, screenshots — and produce a perfectly structured brand profile for the B Design creative generation system.
 
 ────────────────────────────────────────────────────────
 OPTIONAL — ASK QUESTIONS FIRST
@@ -61,7 +61,7 @@ STEP 4 — FILL EVERY OUTPUT SECTION
 ────────────────────────────────────────────────────────
 Use the markdown headers (##) below EXACTLY as shown, in this exact order. No preamble, no closing notes, no code fence around the whole output. Length is flexible — write what the brand actually needs. Specificity beats brevity. If a fact is genuinely unknown, write "TBD" — NEVER fabricate legal/registration numbers, certifications, taglines, or contact info.
 
-📋 OUTPUT FORMAT — copy this whole block into BDesign Paste & Parse
+📋 OUTPUT FORMAT — copy this whole block into B Design Paste & Parse
 
 ## INDUSTRY
 [One value from the allowed list above]
@@ -159,7 +159,7 @@ Desired emotional response: [how should they feel after seeing the ad?]
 ────────────────────────────────────────────────────────
 🎯 SYSTEM AWARENESS — write your output to fit these rules
 ────────────────────────────────────────────────────────
-The BDesign generator has hard constraints. Don't propose anything it can't honor:
+The B Design generator has hard constraints. Don't propose anything it can't honor:
 - Headlines ≤ 8 words. Subcopy ≤ 20 words. CTAs 2–3 words. Real downstream caps for layout integrity.
 - Reference images = layout blueprints only. The system will NEVER copy text, names, locations, or pricing from references. Don't write "we'll reuse the photography from the reference".
 - Logos are force-included via regex matching. Always present, never altered.
@@ -218,7 +218,7 @@ export default function BrandGuide() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "makemyad-master-prompt.md";
+    a.download = "b-design-master-prompt.md";
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -235,7 +235,7 @@ export default function BrandGuide() {
         </h1>
         <p className="text-lg text-muted-foreground max-w-2xl">
           Use the Master Prompt below to turn raw notes into a clean brand profile,
-          then paste the result into BDesign's Paste &amp; Parse wizard.
+          then paste the result into B Design's Paste &amp; Parse wizard.
         </p>
       </div>
 
@@ -281,7 +281,7 @@ export default function BrandGuide() {
               The Master Prompt
             </CardTitle>
             <CardDescription>
-              Industry-agnostic. Outputs the exact structure BDesign's parser understands.
+              Industry-agnostic. Outputs the exact structure B Design's parser understands.
             </CardDescription>
           </div>
           <div className="flex gap-2 shrink-0">
@@ -316,7 +316,7 @@ export default function BrandGuide() {
           <CardTitle>What the prompt produces</CardTitle>
           <CardDescription>
             These are the sections the LLM will return — all of them map directly into
-            BDesign brand fields.
+            B Design brand fields.
           </CardDescription>
         </CardHeader>
         <CardContent>

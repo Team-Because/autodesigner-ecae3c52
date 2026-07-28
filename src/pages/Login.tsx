@@ -43,7 +43,7 @@ export default function Login() {
 
     let loginEmail = email.trim();
     if (!loginEmail.includes("@")) {
-      loginEmail = `${loginEmail}@internal.brandtonic`;
+      loginEmail = `${loginEmail}@internal.bdesign`;
     }
 
     setLoading(true);
@@ -75,8 +75,8 @@ export default function Login() {
       style={{ background: "linear-gradient(135deg, hsl(220 80% 97%), hsl(45 96% 97%), hsl(220 72% 95%))" }}
     >
       <SEO
-        title="Sign in — BDesign by Because"
-        description="Sign in to your BDesign workspace to generate on‑brand AI ad creatives. Accounts are admin-issued by Because."
+        title="Sign in — B Design by Because"
+        description="Sign in to your B Design workspace to generate on‑brand AI ad creatives. Accounts are admin-issued by Because."
         path="/login"
         index={false}
       />
@@ -88,8 +88,8 @@ export default function Login() {
       <Card className="w-full max-w-sm glass border-border/50 shadow-xl relative z-10">
         <CardContent className="pt-10 pb-10 px-8 space-y-7">
           <div className="flex items-center justify-center gap-3 mb-2">
-            <img src="/logo-icon.png" alt="BDesign" className="h-11 w-11 rounded-2xl object-contain" />
-            <span className="font-display font-bold text-2xl text-foreground tracking-tight">BDesign</span>
+            <img src="/logo-icon.png" alt="B Design" className="h-11 w-11 rounded-2xl object-contain" />
+            <span className="font-display font-bold text-2xl text-foreground tracking-tight">B Design</span>
           </div>
           <p className="text-sm text-muted-foreground text-center">
             {isAddingAccount

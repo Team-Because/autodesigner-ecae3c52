@@ -253,7 +253,7 @@ export default function AdminUsers() {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="venus@internal.brandtonic"
+                  placeholder="venus@internal.bdesign"
                   required
                 />
               </div>

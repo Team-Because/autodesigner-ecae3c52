@@ -20,9 +20,9 @@ export const MarketingLayout = () => (
 
     <header className="sticky top-0 z-40 bg-white/85 backdrop-blur-md border-b border-line">
       <div className="max-w-[1180px] mx-auto px-6 h-16 flex items-center justify-between">
-        <Link to="/" className="flex items-center gap-2.5 font-bold text-[17px] tracking-tight" aria-label="BDesign home">
+        <Link to="/" className="flex items-center gap-2.5 font-bold text-[17px] tracking-tight" aria-label="B Design home">
           <FolderMark size={22} />
-          <span>BDesign</span>
+          <span>B Design</span>
           <span className="hidden sm:inline font-mono-sys text-[11px] font-normal text-ink-faint">by Because</span>
         </Link>
 
@@ -82,7 +82,7 @@ export const MarketingLayout = () => (
         <div className="md:col-span-1">
           <Link to="/" className="flex items-center gap-2 font-bold text-[15px]">
             <FolderMark size={20} />
-            BDesign
+            B Design
           </Link>
           <p className="text-sm text-ink-soft mt-3 leading-relaxed">
             One folder per brand. Every reference on the internet lands inside yours.
@@ -129,7 +129,7 @@ export const MarketingLayout = () => (
       <div className="border-t border-line">
         <div className="max-w-[1180px] mx-auto px-6 py-5 text-xs text-ink-faint flex flex-col sm:flex-row gap-2 justify-between">
           <p>© {new Date().getFullYear()} Rellow Digital Private Limited.</p>
-          <p className="font-mono-sys">bdesign — a product of Because</p>
+          <p className="font-mono-sys">B Design — a product of Because</p>
         </div>
       </div>
     </footer>
