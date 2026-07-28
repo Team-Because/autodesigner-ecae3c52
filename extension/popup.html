@@ -3,6 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=360" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="popup.css" />
   <title>BDesign</title>
 </head>
@@ -11,21 +14,30 @@
     <!-- Login view -->
     <section id="login-view" hidden>
       <div class="brand-head">
-        <h1>BDesign</h1>
-        <p class="sub">Sign in to send creatives from anywhere on the web.</p>
+        <img src="icon.png" alt="BDesign" />
+        <div>
+          <h1>BDesign</h1>
+          <p class="sub">Sign in to send creatives from anywhere.</p>
+        </div>
       </div>
       <div id="login-error" class="alert alert-err" hidden></div>
-      <label for="login-email">Username or Email</label>
+      <label for="login-email">Username or email</label>
       <input id="login-email" type="text" placeholder="your username" />
       <label for="login-password">Password</label>
       <input id="login-password" type="password" placeholder="••••••••" />
-      <button id="login-btn" class="btn-primary">Sign In</button>
+      <button id="login-btn" class="btn-primary">Sign in</button>
     </section>
 
     <!-- Main view -->
     <section id="main-view" hidden>
       <header class="topbar">
-        <h1>BDesign</h1>
+        <div class="brand-head">
+          <img src="icon.png" alt="BDesign" />
+          <div>
+            <h1>BDesign</h1>
+            <p class="sub">Save from anywhere on the web.</p>
+          </div>
+        </div>
         <button id="logout-btn" class="btn-link">Sign out</button>
       </header>
 
@@ -38,14 +50,15 @@
       <div id="tab-new" class="tab-panel active">
         <div id="pending-image" class="pending" hidden>
           <img id="pending-preview" alt="Selected image" />
-          <div class="pending-label">Image ready to send</div>
+          <div>
+            <div class="pending-label">Image ready to send</div>
+            <div class="pending-sub">Pick a brand and format below.</div>
+          </div>
         </div>
 
         <div id="hint" class="hint">
-          <p><strong>Right-click</strong> any image on the web →
-             <em>“Save to BDesign”</em>.</p>
-          <p>Or <strong>hover</strong> an image and click the
-             <span class="chip">● Save to BDesign</span> pill.</p>
+          <p><strong>Hover</strong> any image on the web and click the BDesign icon that appears.</p>
+          <p>Or <strong>right-click</strong> → <em>Save to BDesign</em>.</p>
           <p class="sub">Set your defaults below — one click will use them from any page.</p>
         </div>
 
@@ -54,13 +67,13 @@
 
         <label>Default format</label>
         <div id="format-grid" class="format-grid">
-          <div class="fmt active" data-f="square">Square<br /><span>1:1</span></div>
-          <div class="fmt" data-f="landscape">Wide<br /><span>16:9</span></div>
-          <div class="fmt" data-f="portrait">Portrait<br /><span>4:5</span></div>
-          <div class="fmt" data-f="story">Story<br /><span>9:16</span></div>
+          <div class="fmt active" data-f="square">Square<span>1:1</span></div>
+          <div class="fmt" data-f="landscape">Wide<span>16:9</span></div>
+          <div class="fmt" data-f="portrait">Portrait<span>4:5</span></div>
+          <div class="fmt" data-f="story">Story<span>9:16</span></div>
         </div>
 
-        <button id="send-pending-btn" class="btn-primary" hidden>Send to BDesign</button>
+        <button id="send-pending-btn" class="btn-primary" hidden>Generate creative</button>
         <div id="new-msg" class="alert" hidden></div>
       </div>
 
