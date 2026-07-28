@@ -161,3 +161,13 @@ input:focus, select:focus {
   display: inline-block; animation: spin .8s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Divider ─────────────────────────────────────────────────────── */
+.divider {
+  display: flex; align-items: center; gap: 8px;
+  margin: 14px 0 4px; color: var(--muted);
+  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
+}
+.divider::before, .divider::after {
+  content: ""; flex: 1; height: 1px; background: var(--border);
+}
