@@ -150,11 +150,6 @@ export function AppSidebar() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5">
                     <p className="text-sm font-medium text-foreground truncate">{displayName}</p>
-                    {isAdmin && (
-                      <Badge variant="default" className="text-[9px] px-1.5 py-0 h-4">
-                        <Shield className="h-2.5 w-2.5 mr-0.5" /> Admin
-                      </Badge>
-                    )}
                   </div>
                   <p className="text-[11px] text-muted-foreground truncate">
                     {currentUsername}
