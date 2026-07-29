@@ -98,7 +98,7 @@ loginBtn.addEventListener("click", async () => {
   const emailRaw = $("login-email").value.trim();
   const password = $("login-password").value;
   if (!emailRaw || !password) return showErr(loginError, "Enter your credentials.");
-  const email = emailRaw.includes("@") ? emailRaw : `${emailRaw}@internal.bdesign`;
+  const email = emailRaw.includes("@") ? emailRaw : `${emailRaw}@internal.brandtonic`;
   loginBtn.disabled = true; loginBtn.textContent = "Signing in…";
   try {
     const r = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {

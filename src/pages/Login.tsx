@@ -43,7 +43,7 @@ export default function Login() {
 
     let loginEmail = email.trim();
     if (!loginEmail.includes("@")) {
-      loginEmail = `${loginEmail}@internal.bdesign`;
+      loginEmail = `${loginEmail}@internal.brandtonic`;
     }
 
     setLoading(true);
