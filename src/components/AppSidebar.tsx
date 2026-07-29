@@ -1,10 +1,8 @@
-import { LayoutDashboard, Palette, Sparkles, Clock, LogOut, Users, BarChart3, Activity, Shield, ChevronDown, UserCircle, Plus, BookOpen } from "lucide-react";
+import { LayoutDashboard, Palette, Sparkles, Clock, LogOut, ChevronDown, UserCircle, Plus, BookOpen } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/hooks/useAuth";
-import { useIsAdmin } from "@/hooks/useIsAdmin";
 import { useQueryClient } from "@tanstack/react-query";
 import { useMyProfileFields } from "@/hooks/queries/useProfile";
-import { Badge } from "@/components/ui/badge";
 import {
   Sidebar,
   SidebarContent,
