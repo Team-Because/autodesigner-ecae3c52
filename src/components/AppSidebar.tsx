@@ -39,13 +39,6 @@ const userItems = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
 ];
 
-const adminItems = [
-  { title: "Dashboard", url: "/admin", icon: BarChart3 },
-  { title: "All Brands", url: "/admin/brands", icon: Palette },
-  { title: "All History", url: "/admin/history", icon: Clock },
-  { title: "Accounts", url: "/admin/users", icon: Users },
-  { title: "Activity Logs", url: "/admin/logs", icon: Activity },
-];
 
 export function AppSidebar() {
   const { state } = useSidebar();
