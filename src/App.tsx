@@ -15,11 +15,6 @@ import BrandForm from "@/pages/BrandForm";
 import BrandGuide from "@/pages/BrandGuide";
 import Studio from "@/pages/Studio";
 import History from "@/pages/History";
-import AdminUsers from "@/pages/AdminUsers";
-import AdminDashboard from "@/pages/AdminDashboard";
-import AdminBrands from "@/pages/AdminBrands";
-import AdminLogs from "@/pages/AdminLogs";
-import AdminHistory from "@/pages/AdminHistory";
 import Login from "@/pages/Login";
 import NotFound from "@/pages/NotFound";
 import Home from "@/pages/marketing/Home";
@@ -71,11 +66,6 @@ const App = () => (
                 <Route path="/brands/:id/edit" element={<BrandForm />} />
                 <Route path="/dashboard" element={<Dashboard />} />
                 <Route path="/history" element={<History />} />
-                <Route path="/admin" element={<AdminDashboard />} />
-                <Route path="/admin/users" element={<AdminUsers />} />
-                <Route path="/admin/brands" element={<AdminBrands />} />
-                <Route path="/admin/logs" element={<AdminLogs />} />
-                <Route path="/admin/history" element={<AdminHistory />} />
               </Route>
 
               <Route path="*" element={<NotFound />} />

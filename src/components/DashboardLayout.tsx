@@ -9,11 +9,6 @@ const PAGE_TITLES: Record<string, string> = {
   "/brands": "Brands",
   "/dashboard": "Dashboard",
   "/history": "History",
-  "/admin": "Admin Dashboard",
-  "/admin/users": "Accounts",
-  "/admin/brands": "All Brands",
-  "/admin/logs": "Activity Logs",
-  "/admin/history": "All History",
 };
 
 function getPageTitle(pathname: string): string {
