@@ -42,7 +42,7 @@ export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const { user, signOut } = useAuth();
-  const { isAdmin } = useIsAdmin();
+  
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [vaulted, setVaulted] = useState<VaultedAccount[]>([]);
